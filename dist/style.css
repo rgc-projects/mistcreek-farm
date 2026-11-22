@@ -103,3 +103,289 @@ dialog{max-height:min(84dvh,720px);overflow:auto} dialog .subtle{color:#c3c9ab;f
 @media(max-height:500px) and (orientation:landscape) {
   #game[data-mobile-controls='stick'] .context { --stick-size:74px; }
 }
+
+/* Mouse tools live on the map; keep the explicit fallback to reel in a fish. */
+#hudMenu,#hudMore { display:none; }
+#game[data-input='mouse'][data-controls='classic'] .context-actions,
+#game[data-input='mouse'][data-controls='context'] .context-actions { display:none; }
+#game[data-input='mouse'][data-controls='classic'][data-fishing='true'] .context-actions,
+#game[data-input='mouse'][data-controls='context'][data-fishing='true'] .context-actions { display:flex; }
+#game[data-input='mouse'][data-controls='classic'][data-fishing='true'] :is(#interact,#waterWide),
+#game[data-input='mouse'][data-controls='context'][data-fishing='true'] :is(#interact,#waterWide) { display:none; }
+
+/* Immersive touch HUD is opt-in on a short landscape viewport, not a device whitelist.
+   The stage retains its native 5:3 ratio, and the transparent HUD only captures its own buttons. */
+@media (max-height:600px) and (orientation:landscape) {
+  #game[data-mobile-controls='stick'] {
+    --safe-top:env(safe-area-inset-top,0px);
+    --safe-bottom:env(safe-area-inset-bottom,0px);
+    --safe-edges:calc(env(safe-area-inset-left,0px) + env(safe-area-inset-right,0px));
+    --head-h:42px;
+    --gutter:8px;
+    --view-h:calc(100vh - var(--head-h) - var(--safe-top) - var(--safe-bottom) - 7px);
+    --view-h:calc(100dvh - var(--head-h) - var(--safe-top) - var(--safe-bottom) - 7px);
+    --fit-w:min(calc(100% - var(--safe-edges) - 2 * var(--gutter)),calc(var(--view-h) * 5 / 3));
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    position:relative;
+    width:100%;
+    padding:var(--safe-top) 0 max(3px,var(--safe-bottom));
+  }
+  #game[data-mobile-controls='stick'] .top {
+    flex:0 0 var(--head-h);
+    order:0;
+    position:relative;
+    width:var(--fit-w);
+    min-width:0;
+    height:var(--head-h);
+    margin:0;
+    gap:6px;
+  }
+  #game[data-mobile-controls='stick'] :is(.brand,.brand>div:last-child) { min-width:0; }
+  #game[data-mobile-controls='stick'] .brand { gap:7px; }
+  #game[data-mobile-controls='stick'] .brand h1 { font-size:clamp(15px,3.4vh,21px); letter-spacing:.075em; }
+  #game[data-mobile-controls='stick'] .brand .eyebrow { display:none; }
+  #game[data-mobile-controls='stick'] .stamp { width:29px; height:29px; border-radius:6px; flex:none; }
+  #game[data-mobile-controls='stick'] .stamp svg { width:22px; height:22px; }
+  #game[data-mobile-controls='stick'] #hudMenu {
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    flex:none;
+    gap:5px;
+    min-height:38px;
+    padding:4px 10px;
+    border-color:#847141;
+    color:#f4dbad;
+    font-size:13px;
+    margin-left:auto;
+    touch-action:manipulation;
+  }
+  #game[data-mobile-controls='stick'] #hudMenu svg { display:block; fill:none; stroke:currentColor; stroke-linecap:round; stroke-width:1.6; }
+  #game[data-mobile-controls='stick'] #hudMenu[aria-expanded='true'] { border-color:#e8c178; }
+  #game[data-mobile-controls='stick'] :is(.top-actions,.status,footer,.sidebar>.card) { display:none; }
+  #game[data-mobile-controls='stick'] :is(.layout,.sidebar) { display:contents; }
+  #game[data-mobile-controls='stick'] .play {
+    order:1;
+    position:relative;
+    isolation:isolate;
+    display:block;
+    width:var(--fit-w);
+    border:0;
+    border-radius:7px;
+    box-shadow:0 0 0 1px #586847,0 7px 25px #101b15;
+    overflow:hidden;
+  }
+  #game[data-mobile-controls='stick'] .stage { width:100%; aspect-ratio:5/3; background:#2c4a35; }
+  #game[data-mobile-controls='stick'] .stage canvas { object-fit:fill; }
+  #game[data-mobile-controls='stick'] .ribbon { top:6px; left:6px; font-size:11px; line-height:1.1; padding:5px 7px; }
+  #game[data-mobile-controls='stick'] .map-zoom { top:5px; right:6px; min-height:44px; width:44px; }
+  #game[data-mobile-controls='stick'] .context {
+    --stick-size:clamp(70px,23dvh,101px);
+    position:absolute;
+    inset:0;
+    z-index:2;
+    min-height:0;
+    padding:0;
+    display:block;
+    border:0;
+    background:transparent;
+    pointer-events:none;
+  }
+  #game[data-mobile-controls='stick'] #mobileStick {
+    position:absolute;
+    bottom:clamp(8px,4dvh,16px);
+    left:clamp(7px,2.6dvh,15px);
+    pointer-events:auto;
+    background:radial-gradient(circle,#263e31aa 0 47%,#182d22a6 49% 64%,#2b4737b8 66% 100%);
+    border-color:#dbbe878c;
+    box-shadow:inset 0 0 0 2px #16271f61,0 2px 4px #14231980;
+  }
+  #game[data-mobile-controls='stick'] #stickKnob {
+    border-color:#f2cf96c9;
+    background:radial-gradient(circle at 42% 35%,#e9c891df,#bd955fcf 61%,#aa824ec7);
+    box-shadow:inset 0 0 0 2px #b4915e6e,0 2px 5px #12271c87;
+  }
+  #game[data-mobile-controls='stick'] .context #contextText {
+    position:absolute;
+    bottom:57px;
+    left:50%;
+    transform:translateX(-50%);
+    width:max-content;
+    max-width:min(52%,326px);
+    min-height:0;
+    padding:3px 6px;
+    border-radius:4px;
+    background:#13261cbb;
+    color:#fff5df;
+    font-size:11px;
+    line-height:1.25;
+    text-align:center;
+  }
+  #game[data-mobile-controls='stick'] .context .context-actions,
+  #game[data-mobile-controls='stick'][data-input='mouse']:is([data-controls='classic'],[data-controls='context']) .context .context-actions {
+    display:flex;
+    flex-wrap:nowrap;
+    flex-direction:column;
+    align-items:flex-end;
+    width:auto;
+    position:absolute;
+    bottom:clamp(8px,4dvh,16px);
+    right:clamp(6px,2.4dvh,13px);
+    gap:4px;
+  }
+  #game[data-mobile-controls='stick'] .context-actions button {
+    pointer-events:auto;
+    min-width:57px;
+    max-width:112px;
+    min-height:44px;
+    align-self:flex-end;
+    padding:2px 8px;
+    font-size:13px;
+    line-height:1.12;
+    touch-action:manipulation;
+    box-shadow:0 2px 7px #15231c7a;
+  }
+  #game[data-mobile-controls='stick'] .context-actions button[hidden] { display:none; }
+  #game[data-mobile-controls='stick'] .context-actions #use {
+    order:2;
+    min-height:50px;
+    border-color:#f3cb91e0;
+    background:#e9b66cc9;
+    color:#291d13;
+  }
+  #game[data-mobile-controls='stick'] .context-actions #use:not(:disabled):active { background:#f6ca8af5; }
+  #game[data-mobile-controls='stick'] .context-actions .quiet { border-color:#d9bd83c0; background:#1f382cba; color:#fff2d6; }
+  #game[data-mobile-controls='stick'] .context-actions .quiet:not(:disabled):active { background:#32503ede; }
+  #game[data-mobile-controls='stick'] .toolbar {
+    position:absolute;
+    z-index:3;
+    left:50%;
+    bottom:5px;
+    transform:translateX(-50%);
+    width:max-content;
+    max-width:calc(100% - 218px);
+    grid-template-columns:repeat(5,minmax(0,1fr));
+    gap:2px;
+    padding:3px;
+    border:1px solid #b5a375a8;
+    border-radius:6px;
+    background:#152a20bc;
+  }
+  #game[data-mobile-controls='stick'] .toolbar .slot {
+    display:grid;
+    place-items:center;
+    width:clamp(27px,8dvh,41px);
+    min-height:40px;
+    padding:2px 3px;
+    background:#354b3baf;
+  }
+  #game[data-mobile-controls='stick'] .toolbar .slot[aria-pressed='true'] { background:#455a40eb; }
+  #game[data-mobile-controls='stick'] .toolbar .slot-seed { grid-column:span 2; width:auto; }
+  #game[data-mobile-controls='stick'] .toolbar .slot svg { width:23px; height:23px; }
+  #game[data-mobile-controls='stick'] .toolbar .slot kbd { display:none; }
+  #game[data-mobile-controls='stick'] .toolbar .slot span {
+    position:absolute;
+    width:1px;
+    height:1px;
+    padding:0;
+    margin:-1px;
+    overflow:hidden;
+    clip-path:inset(50%);
+    white-space:nowrap;
+  }
+  #game[data-mobile-controls='stick'] .fish-meter { z-index:4; bottom:85px; width:min(50%,350px); }
+  #game[data-mobile-controls='stick'] .sidebar>.notice {
+    position:absolute;
+    z-index:3;
+    top:calc(var(--safe-top) + var(--head-h) + 7px);
+    left:50%;
+    transform:translateX(-50%);
+    width:max-content;
+    max-width:min(42%,316px);
+    overflow:hidden;
+    text-overflow:ellipsis;
+    white-space:nowrap;
+    min-height:0;
+    margin:0;
+    padding:3px 7px;
+    border-radius:4px;
+    background:#1d3428d4;
+    font-size:11px;
+    pointer-events:none;
+  }
+  #game[data-mobile-controls='stick'] .sidebar>.notice:empty { display:none; }
+
+  #game[data-mobile-controls='stick'][data-hud-open='true'] .top-actions {
+    position:absolute;
+    z-index:7;
+    top:calc(100% + 4px);
+    right:0;
+    display:flex;
+    flex-wrap:wrap;
+    align-items:center;
+    justify-content:flex-end;
+    width:max-content;
+    max-width:100%;
+    gap:5px;
+    padding:6px;
+    border:1px solid #a2885a;
+    border-radius:7px;
+    background:#20382ef5;
+    box-shadow:0 4px 14px #0c2018aa;
+  }
+  #game[data-mobile-controls='stick'][data-hud-open='true'] .top-actions button { min-height:44px; font-size:12px; padding:2px 8px; }
+  #game[data-mobile-controls='stick'][data-hud-open='true'] #hudMore {
+    display:grid;
+    min-height:44px;
+    place-items:center;
+    padding:3px 8px;
+    border:1px solid #526852;
+    border-radius:5px;
+    color:#f4dca6;
+    background:#2c4535;
+    font-size:12px;
+    font-weight:650;
+    white-space:nowrap;
+  }
+  #game[data-mobile-controls='stick'][data-hud-open='true'] #hudMore:focus-visible { outline:2px solid #f1c67c; outline-offset:2px; }
+  #game[data-mobile-controls='stick'][data-hud-open='true'] .status { display:grid; order:2; width:var(--fit-w); margin:10px 0 0; }
+  #game[data-mobile-controls='stick'][data-hud-open='true'] .status-cell { padding:6px; gap:4px; }
+  #game[data-mobile-controls='stick'][data-hud-open='true'] .status-cell strong { font-size:12px; }
+  #game[data-mobile-controls='stick'][data-hud-open='true'] .status-cell svg { width:14px; height:14px; }
+  #game[data-mobile-controls='stick'][data-hud-open='true'] .status-cell .energybar { width:19px; }
+  #game[data-mobile-controls='stick'][data-hud-open='true'] .sidebar { display:grid; order:3; width:var(--fit-w); grid-template-columns:repeat(2,minmax(0,1fr)); margin:8px 0 0; }
+  #game[data-mobile-controls='stick'][data-hud-open='true'] .sidebar>.card { display:block; min-width:0; }
+  #game[data-mobile-controls='stick'][data-hud-open='true'] .sidebar .villagers,
+  #game[data-mobile-controls='stick'][data-hud-open='true'] .sidebar>.notice { grid-column:1/-1; }
+  #game[data-mobile-controls='stick'][data-hud-open='true'] .sidebar>.notice { position:static; transform:none; width:auto; max-width:none; white-space:normal; font-size:13px; }
+  #game[data-mobile-controls='stick'][data-hud-open='true'] footer { display:flex; order:4; width:var(--fit-w); margin:7px 0 8px; }
+  #game[data-mobile-controls='stick'][data-hud-open='true'] footer .legend { display:none; }
+  #game[data-mobile-controls='stick'][data-hud-open='true'] #saves { min-height:44px; }
+}
+@media (max-height:350px) and (orientation:landscape) {
+  #game[data-mobile-controls='stick'] { --head-h:39px; }
+  #game[data-mobile-controls='stick'] .context #contextText { bottom:52px; max-width:53%; }
+  #game[data-mobile-controls='stick'] .context-actions button { min-width:48px; padding-inline:5px; font-size:12px; }
+  #game[data-mobile-controls='stick'] .context-actions #use { min-height:44px; }
+  #game[data-mobile-controls='stick'] .toolbar { max-width:calc(100% - 155px); }
+  #game[data-mobile-controls='stick'] .toolbar .slot { min-height:38px; }
+}
+
+#hudVitals { display:none; }
+@media(max-height:600px) and (orientation:landscape) {
+  #game[data-mobile-controls='stick'] #hudVitals {
+    display:block; position:absolute; left:50%; transform:translateX(-50%);
+    color:#f5e5be; font:600 12px/1.3 system-ui,sans-serif; white-space:nowrap;
+    padding:3px 8px; border-radius:9px; background:#223c31; pointer-events:none;
+  }
+}
+/* A saved phone preference should not leave a joystick occupying the desktop panel. */
+@media (min-width:641px) and (min-height:601px) {
+  #game[data-input='mouse'][data-mobile-controls='stick']:is([data-controls='classic'],[data-controls='context']) .context {
+    display:flex;
+    min-height:51px;
+  }
+  #game[data-input='mouse'][data-mobile-controls='stick']:is([data-controls='classic'],[data-controls='context']) #mobileStick { display:none; }
+}

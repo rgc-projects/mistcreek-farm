@@ -1,9 +1,9 @@
 <!doctype html>
 <html lang="zh-CN">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><meta name="theme-color" content="#182b26"><meta name="description" content="在雾溪边种田、钓鱼，和村民一起修渡船，在雾溪的春夏秋冬种田，沿溪探访城镇和林地。"><title>雾溪农场 · Mistcreek Farm</title><link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23243930'/%3E%3Cpath d='M16 26V10m0 7c0-7 4-10 10-10-1 6-5 9-10 10m0 4c-1-7-5-9-11-9 1 5 4 9 11 9' fill='none' stroke='%23efc779' stroke-width='2.5' stroke-linejoin='round'/%3E%3C/svg%3E"><link rel="stylesheet" href="style.css?v=stick8"></head>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><meta name="theme-color" content="#182b26"><meta name="description" content="在雾溪边种田、钓鱼，和村民一起修渡船，在雾溪的春夏秋冬种田，沿溪探访城镇和林地。"><title>雾溪农场 · Mistcreek Farm</title><link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23243930'/%3E%3Cpath d='M16 26V10m0 7c0-7 4-10 10-10-1 6-5 9-10 10m0 4c-1-7-5-9-11-9 1 5 4 9 11 9' fill='none' stroke='%23efc779' stroke-width='2.5' stroke-linejoin='round'/%3E%3C/svg%3E"><link rel="stylesheet" href="style.css?v=immersive9"></head>
 <body>
 <main id="game">
-  <header class="top"><div class="brand"><div class="stamp" aria-hidden="true"><svg viewBox="0 0 40 40"><path d="M7 30h26M20 30V13m0 8C20 12 25 8 33 8c-1 7-6 12-13 13m0 5C19 17 14 15 7 14c0 7 6 12 13 12"/></svg></div><div><p class="eyebrow">MISTCREEK FARM <span class="edition">欢牧时光</span></p><h1>雾溪农场</h1></div></div><div class="top-actions"><button id="sound" class="quiet" aria-pressed="false">♪ 声音关</button><button id="map" class="quiet">地图</button><button id="calendar" class="quiet">农事历</button><button id="help" class="quiet">玩法</button></div></header>
+  <header class="top"><div class="brand"><div class="stamp" aria-hidden="true"><svg viewBox="0 0 40 40"><path d="M7 30h26M20 30V13m0 8C20 12 25 8 33 8c-1 7-6 12-13 13m0 5C19 17 14 15 7 14c0 7 6 12 13 12"/></svg></div><div><p class="eyebrow">MISTCREEK FARM <span class="edition">欢牧时光</span></p><h1>雾溪农场</h1></div></div><div id="hudVitals" aria-label="当前时间与体力"></div><div class="top-actions" id="hudNavigation"><button id="sound" class="quiet" aria-pressed="false">♪ 声音关</button><button id="map" class="quiet">地图</button><button id="calendar" class="quiet">农事历</button><button id="help" class="quiet">玩法</button><a id="hudMore" href="#farmDetails">手记 / 背包 / 存档</a></div><button id="hudMenu" class="quiet" type="button" aria-label="打开农场菜单" aria-controls="hudNavigation farmDetails" aria-expanded="false"><svg aria-hidden="true" viewBox="0 0 24 24" width="17" height="17"><path d="M4 7h16M4 12h16M4 17h16"/></svg><span>菜单</span></button></header>
   <section class="status" aria-label="农场状态">
     <div class="status-cell"><svg aria-hidden="true"><use href="#sun"/></svg><div><small id="weather">第 1 年 · 晴</small><strong id="day">春 1 日</strong></div></div>
     <div class="status-cell"><svg aria-hidden="true"><use href="#clock"/></svg><div><small>溪谷时间</small><strong id="time">06:00</strong></div></div>
@@ -28,7 +28,7 @@
       </div>
       <nav id="tools" class="toolbar" aria-label="工具栏"></nav>
     </section>
-    <aside class="sidebar">
+    <aside class="sidebar" id="farmDetails" aria-label="农场手记、背包与村民">
       <section class="card journal"><div class="card-label"><svg><use href="#journal"/></svg> 农场手记</div><h2 id="objective">从一畦土地开始</h2><p id="questBody">选一块田，用锄头翻土。</p><div class="steps" id="steps"></div></section>
       <section class="card supplies"><div class="card-label"><svg><use href="#bag"/></svg> 帆布背包 <button id="bagOpen" class="text-button" type="button">展开</button></div><div class="stock" id="stock"></div></section>
       <section class="card villagers"><div class="card-label"><svg><use href="#clock"/></svg> 村里此刻</div><div class="npc-list" id="npcList"></div><div class="farm-links"><button id="ranchLink" class="text-button" type="button">前往畜棚</button></div></section><div id="notice" class="notice" role="status" aria-live="polite"></div>
@@ -45,6 +45,6 @@
 <symbol id="journal" viewBox="0 0 24 24"><rect x="5" y="3" width="14" height="18" rx="2"/><path d="M8 3v18m3-13h5m-5 4h4"/></symbol>
 <symbol id="bag" viewBox="0 0 24 24"><path d="M8 7h8l4 8v4H4v-4Zm2 0L8 3h8l-2 4m-5 7h6"/></symbol>
 </defs></svg>
-<script defer src="engine.js?v=stick8"></script><script defer src="art.js?v=stick8"></script><script defer src="world-art.js?v=stick8"></script><script defer src="sound.js?v=stick8"></script><script defer src="save.js?v=stick8"></script><script defer src="walk.js?v=stick8"></script><script defer src="joystick.js?v=stick8"></script><script defer src="game.js?v=stick8"></script>
+<script defer src="engine.js?v=immersive9"></script><script defer src="art.js?v=immersive9"></script><script defer src="world-art.js?v=immersive9"></script><script defer src="sound.js?v=immersive9"></script><script defer src="save.js?v=immersive9"></script><script defer src="walk.js?v=immersive9"></script><script defer src="joystick.js?v=immersive9"></script><script defer src="game.js?v=immersive9"></script>
 </body>
 </html>

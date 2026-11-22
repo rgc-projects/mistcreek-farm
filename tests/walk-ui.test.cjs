@@ -28,11 +28,12 @@ function eventTarget(){
  };
 }
 
-function rig({player,region='valley',controls='guided',reduced=false,mobile=false,mobileControls='tap',setup}={}){
+function rig({player,region='valley',controls='guided',legacyClassic=false,reduced=false,mobile=false,mobileControls='tap',setup}={}){
  let now=0,raf,live,last,shadows=[],nextTimer=0;
  const timers=new Map(), rows=new Map(), media={matches:reduced};
  const disk={getItem:key=>rows.get(key)??null,setItem:(key,value)=>rows.set(key,value)};
- if(controls==='classic')disk.setItem('mistcreek-controls',controls);
+ if(controls)disk.setItem('mistcreek-desktop-controls',controls);
+ if(legacyClassic)disk.setItem('mistcreek-controls','classic');
  if(mobile)disk.setItem('mistcreek-mobile-controls',mobileControls);
  if(player||region!=='valley'||setup){
   const s=E.create(123);s.region=region;s.outworld.visited[region]=true;
@@ -444,4 +445,122 @@ test('a thumb action is rejected when the facing target changes between press an
  action.dispatch('pointerdown',finger);action.dispatch('pointerup',finger);action.dispatch('click',finger);
  assert.equal(g.state.plots['8,10'].watered,false);
  assert.equal(g.state.plots['9,10'].watered,true);
+});
+
+const contextualRig=(options={})=>rig({controls:'context',...options});
+
+test('the previous desktop preference still selects classic controls when the new preference is absent',()=>{
+ const g=rig({controls:null,legacyClassic:true,setup(s){s.plots['9,10'].tilled=true;}});
+ g.click(9,10);
+ assert.equal(g.state.plots['9,10'].crop,null,'classic left click uses the hoe, not contextual planting');
+ g.down('2');g.up('2');
+ g.click(9,10);
+ assert.equal(g.state.plots['9,10'].watered,true);
+});
+
+test('fresh desktop mode performs the nearby contextual crop action on each deliberate left click',()=>{
+ const g=rig({controls:null,setup(s){
+  Object.assign(s.plots['8,10'],{tilled:true,crop:'turnip',growth:E.CROPS.turnip.days});
+ }});
+ const field=g.state.plots['9,10'];
+ const seeds=g.state.inventory.beanSeed;
+ g.click(9,10);
+ assert.equal(field.tilled,true);assert.equal(field.crop,null);
+ g.down('4');g.up('4');
+ g.click(9,10);
+ assert.equal(field.crop,'bean','contextual planting uses the currently picked seed');
+ assert.equal(g.state.inventory.beanSeed,seeds-1);
+ assert.equal(field.watered,false);
+ g.click(9,10);
+ assert.equal(field.watered,true,'contextual watering works with the seed tool still selected');
+ g.click(8,10);
+ assert.equal(g.state.plots['8,10'].crop,null);
+ assert.equal(g.state.inventory.turnip,1);
+ assert.deepEqual(xy(g.state.player),[9,9]);
+});
+
+test('a far contextual left click walks into range without using a tool; a second click is required',()=>{
+ const g=contextualRig();
+ const field=g.state.plots['12,12'];
+ g.click(12,12);
+ assert.equal(field.tilled,false);
+ g.next();
+ assert.equal(field.tilled,false);
+ const arrived=g.settle();
+ const player=xy(g.state.player);
+ assert.equal(Math.max(Math.abs(player[0]-12),Math.abs(player[1]-12)),1);
+ assert.deepEqual(xy(arrived.target),[12,12]);
+ assert.equal(field.tilled,false);
+ assert.equal(g.state.energy,100,'walking to the field does not use a tool');
+ g.click(12,12);
+ assert.equal(field.tilled,true);
+ assert.equal(g.state.energy,97);
+});
+
+test('contextual left click opens a nearby chest, talks to a villager and enters a door',()=>{
+ const chest=contextualRig();
+ chest.click(10,8);
+ assert.equal(chest.ids.panel.open,true);
+ assert.equal(chest.ids.panelTitle.textContent,'农场出货箱');
+
+ const npc=contextualRig({player:{x:12,y:8}});
+ const farmer=E.npcs(npc.state).find(n=>n.id==='farmer');
+ npc.click(farmer.x,farmer.y);
+ assert.equal(npc.ids.panel.open,true);
+ assert.equal(npc.ids.panelTitle.textContent,farmer.name);
+ assert.equal(npc.state.spring.met.farmer,true);
+
+ const door=contextualRig({player:{x:7,y:8}});
+ door.click(7,7);
+ const inside=door.next();
+ assert.equal(door.state.region,'house');
+ assert.deepEqual(xy(inside.pose),[14,13]);
+ assert.equal(inside.pose.phase,null);
+});
+
+test('contextual right click and X interact; C still uses the selected tool explicitly',()=>{
+ const g=contextualRig({setup(s){s.plots['9,10'].tilled=true;}});
+ const plot=g.state.plots['9,10'];
+ g.click(9,10,{button:2});
+ assert.equal(plot.crop,null,'right click must not use the contextual plant action');
+ g.down('2');g.up('2');g.down('c');g.up('c');
+ assert.equal(plot.watered,true,'C uses the selected watering can on an empty tilled tile');
+ assert.equal(plot.crop,null);
+ g.click(10,8,{button:2});
+ assert.equal(g.ids.panelTitle.textContent,'农场出货箱');
+
+ const facing=contextualRig({player:{x:9,y:8,dir:'right'}});
+ facing.down('x');facing.up('x');
+ assert.equal(facing.ids.panelTitle.textContent,'农场出货箱');
+});
+
+test('Shift plus contextual left click water uses the real row operation, while empty ground has no action',()=>{
+ const g=contextualRig({setup(s){
+  for(let x=8;x<=10;x++)Object.assign(s.plots[x+',10'],{tilled:true,crop:'turnip',growth:0});
+ }});
+ const before={energy:g.state.energy,inventory:{...g.state.inventory},plots:JSON.stringify(g.state.plots)};
+ g.click(9,8);
+ g.settle(3);
+ assert.equal(g.ids.panel.open,false);
+ assert.equal(g.state.energy,before.energy);
+ assert.deepEqual(g.state.inventory,before.inventory);
+ assert.equal(JSON.stringify(g.state.plots),before.plots);
+ // The empty-ground click may move the player. Get back within tool reach if so.
+ if(g.state.player.y!==9){g.down('s');g.up('s');g.settle(3);}
+ g.click(9,10,{shiftKey:true});
+ for(let x=8;x<=10;x++)assert.equal(g.state.plots[x+',10'].watered,true);
+ assert.equal(g.state.energy,94);
+});
+
+test('touch in contextual desktop mode still requires the explicit action button',()=>{
+ const g=contextualRig({mobile:true,setup(s){
+  Object.assign(s.plots['9,10'],{tilled:true,crop:'turnip',growth:E.CROPS.turnip.days});
+ }});
+ g.tap(9,10);g.next();
+ assert.equal(g.state.plots['9,10'].crop,'turnip');
+ assert.equal(g.state.inventory.turnip,0);
+ assert.equal(g.ids.use.textContent,'收获');
+ g.ids.use.dispatch('click');
+ assert.equal(g.state.plots['9,10'].crop,null);
+ assert.equal(g.state.inventory.turnip,1);
 });
