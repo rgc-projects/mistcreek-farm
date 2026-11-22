@@ -1,0 +1,6 @@
+{
+  "name": "mistcreek-farm",
+  "compatibility_date": "2026-11-22",
+  "workers_dev": true,
+  "assets": { "directory": "./dist" }
+}

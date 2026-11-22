@@ -12,3 +12,11 @@
 测试：`node --test tests/*.test.cjs`
 
 目前尚未完成全年主线结局、更长的村民故事和节庆。
+
+## 部署到 Cloudflare Workers
+
+在 Workers & Pages 中选择连接 Git 仓库，并选中 `rgc-projects/mistcreek-farm`。项目名保持 `mistcreek-farm`，生产分支选 `main`，根目录保持仓库根目录（`/`），构建命令留空，部署命令用 `npx wrangler deploy`。
+
+`wrangler.jsonc` 会把 `dist/` 作为静态站点发布。不需要 Worker 脚本、构建步骤、环境变量或额外绑定。如需免登录访问，请保持 Cloudflare Access 关闭。
+
+新域名不会自动继承旧域名上的浏览器存档。请在旧站打开「存档」导出，再到新站导入。
