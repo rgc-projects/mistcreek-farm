@@ -11,7 +11,7 @@ const Walk=require('../dist/walk.js');
 
 const read=file=>fs.readFileSync(path.join(__dirname,'../dist',file),'utf8');
 const html=read('index.html');
-const scripts=Object.fromEntries(['walk.js','art.js','world-art.js','game.js'].map(file=>[file,read(file)]));
+const scripts=Object.fromEntries(['walk.js','joystick.js','art.js','world-art.js','game.js'].map(file=>[file,read(file)]));
 const xy=({x,y})=>[x,y];
 
 function eventTarget(){
@@ -28,11 +28,12 @@ function eventTarget(){
  };
 }
 
-function rig({player,region='valley',controls='guided',reduced=false,mobile=false,setup}={}){
+function rig({player,region='valley',controls='guided',reduced=false,mobile=false,mobileControls='tap',setup}={}){
  let now=0,raf,live,last,shadows=[],nextTimer=0;
  const timers=new Map(), rows=new Map(), media={matches:reduced};
  const disk={getItem:key=>rows.get(key)??null,setItem:(key,value)=>rows.set(key,value)};
  if(controls==='classic')disk.setItem('mistcreek-controls',controls);
+ if(mobile)disk.setItem('mistcreek-mobile-controls',mobileControls);
  if(player||region!=='valley'||setup){
   const s=E.create(123);s.region=region;s.outworld.visited[region]=true;
   if(player)s.player={...s.player,...player};
@@ -56,6 +57,7 @@ function rig({player,region='valley',controls='guided',reduced=false,mobile=fals
    showModal(){this.open=true;},close(){this.open=false;this.dispatch('close');},
    focus(){},setPointerCapture(){},releasePointerCapture(){},hasPointerCapture(){return true;},
    getBoundingClientRect(){
+    if(tag==='mobileStick')return {left:24,top:230,right:104,bottom:310,width:80,height:80};
     const width=mobile?360:720,height=mobile?216:432;
     return {left:0,top:0,right:width,bottom:height,width,height};
    }
@@ -63,7 +65,7 @@ function rig({player,region='valley',controls='guided',reduced=false,mobile=fals
   if(tag==='canvas'){const canvasContext=ctx(false);e.getContext=()=>canvasContext;}
   return e;
  }
- const ids=Object.fromEntries([...html.matchAll(/\bid="([^"]+)"/g)].map(([,id])=>[id,element(id)]));
+ const ids=Object.fromEntries([...html.matchAll(/\bid="([^"]+)"/g)].map(([,id])=>[id,Object.assign(element(id),{id})]));
  // These four spans are created by the real toolbar innerHTML.
  for(const id of ['hoe','water','seed','fish'])ids['qty-'+id]=element('small');
  const world=ids.world, main=ctx(true);
@@ -77,8 +79,8 @@ function rig({player,region='valley',controls='guided',reduced=false,mobile=fals
   setTimeout(fn,delay){const id=++nextTimer;timers.set(id,{fn,at:now+delay});return id;},
   clearTimeout:id=>timers.delete(id)
  });
- for(const f of ['walk.js','art.js','world-art.js'])vm.runInContext(scripts[f],globals,{filename:f});
- win.MistWalk=globals.MistWalk;
+ for(const f of ['walk.js','joystick.js','art.js','world-art.js'])vm.runInContext(scripts[f],globals,{filename:f});
+ win.MistWalk=globals.MistWalk;win.MistJoystick=globals.MistJoystick||win.MistJoystick;
  for(const name of ['MistArt','MistWorldArt']){
   const draw=win[name].draw;
   win[name].draw=(c,state,t,target,fx,cam)=>{
@@ -110,7 +112,17 @@ function rig({player,region='valley',controls='guided',reduced=false,mobile=fals
  const touch=(type,x,y,opts)=>pointer(type,x,y,{pointerType:'touch',...opts});
  function tap(x,y){touch('pointerdown',x,y);touch('pointerup',x,y);}
  function settle(steps=16){let result;for(let i=0;i<steps;i++)result=frame(now+Walk.route);return result;}
- return {frame,clock,click,touch,tap,settle,media,ids,win,world,
+ function stick(type,dx=0,dy=0,opts={}){
+  const pad=ids.mobileStick,b=pad.getBoundingClientRect();
+  return pad.dispatch(type,{button:0,pointerType:'touch',pointerId:2,isPrimary:true,
+   clientX:b.left+b.width/2+dx,clientY:b.top+b.height/2+dy,...opts});
+ }
+ function next(ms=16){return frame(now+ms);}
+ function waitFor(check){
+  for(let n=0;n<36;n++){const f=next();if(check())return f;}
+  assert.fail('condition did not occur within 36 game frames');
+ }
+ return {frame,next,waitFor,clock,click,touch,tap,settle,stick,media,ids,win,world,
   down:(k,opts)=>key('keydown',k,opts),up:k=>key('keyup',k),
   get state(){return live;},
   saved(){win.dispatch('pagehide');return Save.load(disk,E.restore).state;}
@@ -130,7 +142,7 @@ test('held keyboard steps paint fractional positions, stop on keyup and persist 
  assert.equal(first.name,'MistArt');
  assert.deepEqual(xy(first.pose),[9.5,9]);shadowAt(first,9.5,9);
  assert(Number.isFinite(first.pose.phase));
- assert.deepEqual(xy(g.saved().player),[10,9]);
+ assert.deepEqual(xy(g.state.player),[10,9]);
  g.frame(Walk.keyboard);
  assert.deepEqual(xy(g.state.player),[11,9]);
  g.frame(Walk.keyboard*2);
@@ -139,6 +151,7 @@ test('held keyboard steps paint fractional positions, stop on keyup and persist 
  const idle=g.frame(Walk.keyboard*4);
  assert.deepEqual(xy(g.state.player),[12,9]);
  assert.deepEqual(xy(idle.pose),[12,9]);assert.equal(idle.pose.phase,null);
+ assert.deepEqual(xy(g.saved().player),[12,9]);
 });
 
 test('a short perpendicular tap during a step is buffered and executed once at the corner',()=>{
@@ -311,4 +324,124 @@ test('one adjacent touch selection supports the explicit till, plant and water s
  g.ids.use.dispatch('click');
  assert.equal(plot.watered,true);
  assert.deepEqual(xy(g.state.player),[9,9]);
+});
+
+const joystickRig=(options={})=>rig({mobile:true,mobileControls:'stick',...options});
+function pointStick(g,dx,dy){
+ g.stick('pointerdown');
+ g.stick('pointermove',dx,dy);
+}
+
+test('joystick hold walks, and release finishes the in-flight tile without taking another step',()=>{
+ const g=joystickRig();
+ pointStick(g,32,0);
+ const last=g.waitFor(()=>g.state.player.x===12);
+ assert.deepEqual(xy(g.state.player),[12,9]);
+ assert(last.pose.x>=11&&last.pose.x<12,'an accepted step must still be interpolating');
+ g.stick('pointerup',32,0);
+ const stopped=g.settle(6);
+ assert.deepEqual(xy(g.state.player),[12,9]);
+ assert.deepEqual(xy(stopped.pose),[12,9]);assert.equal(stopped.pose.phase,null);
+ assert.deepEqual(xy(g.saved().player),[12,9]);
+});
+
+test('joystick manual movement cancels a touch route rather than allowing it to resume on release',()=>{
+ const g=joystickRig();
+ g.tap(13,13);
+ assert(g.next().stopTile);
+ const [x,y]=xy(g.state.player);
+ pointStick(g,-32,0);
+ const taken=g.waitFor(()=>g.state.player.x===x-1);
+ assert.equal(taken.stopTile,null,'clear the destination marker on takeover');
+ g.stick('pointerup',-32,0);
+ const stopped=g.settle(16);
+ assert.deepEqual(xy(g.state.player),[x-1,y]);
+ assert.deepEqual(xy(stopped.pose),[x-1,y]);
+});
+
+test('joystick crosses the widened east road on row 9 and can return west from town',()=>{
+ const g=joystickRig({player:{x:28,y:9}});
+ pointStick(g,32,0);
+ const town=g.waitFor(()=>g.state.region==='town');
+ assert.equal(town.name,'MistWorldArt');
+ assert.deepEqual(xy(town.pose),[2,11]);assert.equal(town.pose.phase,null);
+ g.stick('pointerup',32,0);g.settle(4);
+ assert.deepEqual(xy(g.state.player),[2,11]);
+ pointStick(g,-32,0);
+ const valley=g.waitFor(()=>g.state.region==='valley');
+ assert.equal(valley.name,'MistArt');assert.deepEqual(xy(valley.pose),[28,8]);
+ g.stick('pointerup',-32,0);g.settle(4);
+ assert.deepEqual(xy(g.state.player),[28,8]);
+ assert.equal(g.saved().outworld.visited.town,true);
+});
+
+test('joystick facing supplies successive action targets, then an explicit tap overrides facing',()=>{
+ const g=joystickRig({player:{x:7,y:10,dir:'right'},setup(s){
+  for(const id of ['8,10','9,10','10,10','8,11'])s.plots[id].tilled=true;
+ }});
+ const waterButton=g.ids.tools.children.find(button=>button.dataset.tool==='water');
+ waterButton.dispatch('click');
+ const action=g.ids.use;
+ for(let target=8;target<=10;target++){
+  const before=g.state.energy;
+  action.dispatch('click');
+  assert(g.state.plots[target+',10'].watered,'action must water the cell in front of the player');
+  assert.equal(g.state.energy,before-2);
+  if(target<10){
+   pointStick(g,32,0);g.waitFor(()=>g.state.player.x===target);
+   g.stick('pointerup',32,0);g.settle(3);
+   assert.deepEqual(xy(g.state.player),[target,10]);
+  }
+ }
+ g.tap(8,11);
+ const selected=g.next();
+ assert.deepEqual(xy(selected.target),[8,11]);
+ assert.equal(g.state.plots['8,11'].watered,false,'selection is not an action');
+ action.dispatch('click');
+ assert.equal(g.state.plots['8,11'].watered,true);
+ assert.deepEqual(xy(g.state.player),[9,10],'adjacent explicit targeting does not move the player');
+});
+
+test('opening a modal, cancelling a pointer and losing focus each clear joystick input',()=>{
+ for(const reset of ['modal','cancel','blur','pagehide']){
+  const g=joystickRig();
+  pointStick(g,32,0);
+  g.waitFor(()=>g.state.player.x===10);
+  if(reset==='modal'){
+   g.ids.help.dispatch('click');
+   assert(g.ids.panel.open);
+   g.settle(3);
+   g.ids.panel.close();
+  }else if(reset==='cancel')g.stick('pointercancel',32,0);
+  else if(reset==='pagehide')assert.deepEqual(xy(g.saved().player),[10,9]);
+  else g.win.dispatch('blur');
+  const stopped=g.settle(7);
+  assert.deepEqual(xy(g.state.player),[10,9],reset);
+  assert.deepEqual(xy(stopped.pose),[10,9],reset);
+  assert.equal(stopped.pose.phase,null,reset);
+ }
+});
+
+test('a thumb action is rejected when the facing target changes between press and click',()=>{
+ const g=joystickRig({player:{x:7,y:10,dir:'right'},setup(s){
+  for(const id of ['8,10','9,10'])s.plots[id].tilled=true;
+ }});
+ g.ids.tools.children.find(button=>button.dataset.tool==='water').dispatch('click');
+ const action=g.ids.use, finger={button:0,pointerType:'touch',pointerId:3,clientX:280,clientY:260};
+ const first=g.next();
+ assert.deepEqual(xy(first.target),[8,10]);
+ action.dispatch('pointerdown',finger);
+ pointStick(g,32,0);
+ const after=g.waitFor(()=>g.state.player.x===8);
+ assert.deepEqual(xy(after.target),[9,10]);
+ g.stick('pointerup',32,0);
+ action.dispatch('pointerup',finger);action.dispatch('click',finger);
+ assert.equal(g.state.plots['8,10'].watered,false);
+ assert.equal(g.state.plots['9,10'].watered,false);
+ assert.equal(g.state.energy,100);
+ assert.match(g.ids.contextText.textContent,/目标变了/);
+ g.settle(3);
+ action.dispatch('pointerdown',finger);action.dispatch('pointerup',finger);action.dispatch('click',finger);
+ assert.equal(g.state.plots['8,10'].watered,false);
+ assert.equal(g.state.plots['9,10'].watered,true);
 });

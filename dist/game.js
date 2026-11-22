@@ -1,6 +1,6 @@
 (() => {
 'use strict';
-const E=window.MistEngine,A=window.MistArt,W=window.MistWorldArt,S=window.MistSound,storage=window.MistSave,Walk=window.MistWalk;
+const E=window.MistEngine,A=window.MistArt,W=window.MistWorldArt,S=window.MistSound,storage=window.MistSave,Walk=window.MistWalk,Joystick=window.MistJoystick;
 const $=id=>document.getElementById(id), canvas=$('world'),ctx=canvas.getContext('2d');
 const disk=(()=>{try{return window.localStorage;}catch{return null;}})();
 const startup=storage.load(disk,E.restore);
@@ -9,6 +9,16 @@ let lastList='', arrivalTimer=0, hovered=null, controls='guided';
 let touchTarget=false, touchGesture=null, touchFeedback='', routeStop=null;
 try{if(disk?.getItem('mistcreek-controls')==='classic')controls='classic';}catch{}
 function setControls(mode){controls=mode==='classic'?'classic':'guided';hovered=null;clearTouchTarget();try{disk?.setItem('mistcreek-controls',controls);}catch{}update();if(panel.open)renderPanel();}
+
+const coarsePointer=window.matchMedia?.('(pointer: coarse)');
+let mobileControls=coarsePointer?.matches?'stick':'tap', stickDir=null, actionPress=null;
+try{const pref=disk?.getItem('mistcreek-mobile-controls');if(pref==='stick'||pref==='tap')mobileControls=pref;}catch{}
+const stickMode=()=>mobileControls==='stick';
+function setMobileControls(mode){
+ mobileControls=mode==='stick'?'stick':'tap';joystick.reset();touchGesture=null;clearTouchTarget();
+ try{disk?.setItem('mistcreek-mobile-controls',mobileControls);}catch{}
+ update();if(panel.open)renderPanel();
+}
 
 const cam={x:0,y:0};
 const walker=Walk.create(), reducedMotion=window.matchMedia?.('(prefers-reduced-motion: reduce)');
@@ -81,7 +91,7 @@ const passable=(x,y)=>E.isWalkable(x,y,region(),state);
 function plotAt(p){return region()==='valley'&&p&&p.x>=5&&p.x<=13&&p.y>=10&&p.y<=14;}
 function clearTouchTarget(){touchTarget=false;touchFeedback='';routeStop=null;}
 function touchPlotAction(p){
- if(!touchTarget||!selected||!plotAt(p))return null;
+ if((!stickMode()&&(!touchTarget||!selected))||!plotAt(p))return null;
  const plot=state.plots[pos(p)],crop=E.CROPS[plot?.crop];
  if(!plot)return null;
  if(crop){
@@ -91,8 +101,19 @@ function touchPlotAction(p){
  if(!plot.tilled)return {name:'hoe',label:'翻土'};
  return tool==='water'&&!plot.watered&&!state.rain?{name:'water',label:'浇水'}:{name:'plant',label:'播种'};
 }
+function mobileAction(p,hint,field=touchPlotAction(p)){
+ if(field)return field;
+ if(!adjacent(state.player,p))return null;
+ if(portal(p))return {name:'interact',label:'前往'};
+ hint ||= E.getContext(state,p);
+ if(!hint)return null;
+ const label=hint.startsWith('和')&&hint.endsWith('聊聊')?'交谈':
+  hint.startsWith('采集')?'采集':hint.startsWith('打开商店')?'商店':
+  hint.startsWith('休息')?'休息':hint;
+ return {name:'interact',label};
+}
 function facing(){const [dx,dy]=dir[state.player.dir]||dir.down;return {x:state.player.x+dx,y:state.player.y+dy};}
-function target(){return selected||(controls==='classic'&&hovered&&adjacent(state.player,hovered)?hovered:null)||facing();}
+function target(){return selected||(!stickMode()&&controls==='classic'&&hovered&&adjacent(state.player,hovered)?hovered:null)||facing();}
 function save(options){clearTimeout(saveTimer);const ok=storage.write(disk,state,E.restore,options);$('saveStatus').textContent=ok?'进度保存在此浏览器':'未能保存，请手动导出';return ok;}
 function deferredSave(){clearTimeout(saveTimer);saveTimer=setTimeout(()=>save(),350);}
 function tell(message,good=false){if(!message)return;const n=$('notice');n.textContent=message;n.classList.toggle('good',good);}
@@ -149,6 +170,8 @@ function markup(id,html){if(lastMarkup.get(id)!==html){$(id).innerHTML=html;last
 function update(){
  const cal=dateOf(), weather=weatherOf();
  $('game').dataset.season=cal.season;
+ $('game').dataset.mobileControls=mobileControls;
+ $('mobileStick').hidden=!stickMode();
  markup('controlsLegend',controls==='classic'?'<kbd>WASD</kbd> 移动 <kbd>C</kbd> 工具 <kbd>X</kbd> 互动':'<kbd>WASD</kbd> 移动 <kbd>空格</kbd> 使用 <kbd>E</kbd> 互动');
  canvas.setAttribute('aria-label',controls==='classic'?'雾溪农场地图，WASD 移动，C 用工具，X 互动':'雾溪农场地图，方向键移动，空格用工具，E 互动');
  const link=$('ranchLink');link.hidden=region()!=='valley';link.textContent=state.ranch.built?'前往畜棚':'查看畜棚工地';
@@ -165,12 +188,15 @@ function update(){
  for(const b of $('tools').children){const id=b.dataset.tool;b.setAttribute('aria-pressed',String(id===tool));$('qty-'+id).textContent=id==='seed'?E.CROPS[seed].seedName+' ×'+(state.inventory[E.CROPS[seed].seed]||0):'';}
  const p=target(), door=portal(p), close=adjacent(state.player,p), field=touchPlotAction(p);
  const hint=door&&close?door.label:E.getContext(state,p), moving=!!route.length;
+ const stickAction=stickMode()?mobileAction(p,hint,field):null;
  $('contextText').textContent=fishing?'等光标进入金色区域，再收线。':moving?(field?'走到标出的田边…':'正在前往选中的位置…'):
-  (touchTarget&&touchFeedback||hint||(field&&!close?'走到相邻田格再操作。':controls==='classic'&&!touchTarget?'左键用工具，右键互动；WASD 移动。':'点地图选位置，也可用方向键移动。'));
- const useButton=$('use');useButton.textContent=fishing?'收线':field?.label||(tool==='seed'?'播种':tool==='water'?'浇水':'用'+toolNames[tool]);useButton.disabled=!fishing&&(moving||!!field&&!close);
- const inter=$('interact');inter.textContent=door&&close?'前往':'互动';inter.disabled=moving||!!fishing;inter.hidden=!!field&&!fishing;
- const showBatch=field?field.name==='water':tool==='water';
- $('waterWide').hidden=!showBatch||!!fishing; $('waterWide').disabled=moving||!!field&&!close;
+  ((touchTarget||stickMode())&&touchFeedback||hint||(field&&!close?'走到相邻田格再操作。':stickMode()?'左手走路，右手操作。也可以点地图选格。':controls==='classic'&&!touchTarget?'左键用工具，右键互动；WASD 移动。':'点地图选位置，也可用方向键移动。'));
+ const useButton=$('use');
+ useButton.textContent=fishing?'收线':stickMode()?(stickAction?.label||'操作'):field?.label||(tool==='seed'?'播种':tool==='water'?'浇水':'用'+toolNames[tool]);
+ useButton.disabled=!fishing&&(moving||(stickMode()?!stickAction||!close:!!field&&!close));
+ const inter=$('interact');inter.textContent=door&&close?'前往':'互动';inter.disabled=moving||!!fishing;inter.hidden=stickMode()||!!field&&!fishing;
+ const showBatch=stickMode()?stickAction?.name==='water':field?field.name==='water':tool==='water';
+ $('waterWide').hidden=!showBatch||!!fishing;$('waterWide').disabled=moving||(stickMode()||!!field)&&!close;
  $('waterWide').textContent=state.ranch.toolLevel===2?'浇五格':'浇一排';
  const stage=canvas.parentElement;stage.style.setProperty('--zoom',zoom?'1.75':'1');
 
@@ -189,7 +215,7 @@ function move(dx,dy,manual=true,now=performance.now()){
  if(manual){route=[];selected=null;clearTouchTarget();}
  const before=region(), from={x:state.player.x,y:state.player.y};
  const moved=E.move(state,dx,dy);
- if(region()!==before){arrival();S?.play('travel');save();}
+ if(region()!==before){arrival();if(stickDir)retryMoveAt=now+Walk.keyboard;S?.play('travel');save();}
  else if(moved){walker.start(from,state.player,now,manual?Walk.keyboard:Walk.route);deferredSave();}
  if(!moved)retryMoveAt=now+Walk.keyboard;
  return moved;
@@ -213,7 +239,7 @@ function pathTo(targetTile,interact){
 function after(r,action,p){
  if(!r)return;
  tell(r.msg,r.ok);
- if(touchTarget)touchFeedback=r.msg;
+ if(touchTarget||stickMode())touchFeedback=r.msg;
  let cue=({hoe:'hoe',water:'water',waterRow:'water',plant:'plant',ship:'ship',order:'order',buySeed:'buy',sleep:'newDay',gather:'gather',sail:'sail',repairFerry:'ferryRepaired',travel:'travel',workshopStart:'process',workshopCollect:'take',gift:'errand',barnBuild:'buildBarn',barnUpgrade:'upgrade',toolUpgrade:'upgrade',animalBuy:'buy',hayBuy:'buy',animalFeed:'feed',animalPet:'pet',animalCollect:'animalCollect'})[action];
  if(['harvest','catch','miss','newDay','repairDone','errand'].includes(r.event))cue=r.event;
  if(r.errand)cue='errand';
@@ -246,7 +272,7 @@ function use(wide=false){
   const t=candidates.find(v=>adjacent(state.player,v)&&waterAt(v.x,v.y));
   if(!t){tell('靠近河岸或走到池塘木码头，再用鱼竿。');return;}
   if(state.energy<7){tell('体力用完了。回木屋休息，明天再钓吧。');return;}
-  route=[];fishing={tile:t,start:performance.now()};$('fishMeter').hidden=false;
+  route=[];joystick.reset();fishing={tile:t,start:performance.now()};$('fishMeter').hidden=false;
   const [lo,hi]=E.FISHING_BANDS[state.journal.fished?'normal':'first'];
   const band=$('fishBand');band.style.left=(lo*100)+'%';band.style.width=((hi-lo)*100)+'%';
   S?.play('cast');update();return;
@@ -256,9 +282,9 @@ function use(wide=false){
  else action(tool,p);
 }
 function tapAction(wide=false){
- const p=target(), field=touchPlotAction(p);
- if(fishing||!field)return use(wide);
- if(panel.open||route.length||!adjacent(state.player,p))return;
+ const p=target(), field=stickMode()?mobileAction(p):touchPlotAction(p);
+ if(fishing||!stickMode()&&!field)return use(wide);
+ if(!field||panel.open||route.length||!adjacent(state.player,p))return;
  if(wide&&field.name!=='water')return;
  if(field.name==='interact')return interact();
  action(wide?'waterRow':field.name,p,field.name==='plant'?seed:undefined);
@@ -277,7 +303,7 @@ function qButton(label,fn,accent=false){
 }
 function paragraph(parent,txt){const p=document.createElement('p');p.textContent=txt;parent.append(p);}
 function showPanel(mode,p,msg,detail=null){
- modalMode=mode;modalTile=p;modalStarter=msg||'';modalData=detail;keys.clear();pendingMove=null;route=[];routeStop=null;touchGesture=null;if(fishing)stopFishing();
+ modalMode=mode;modalTile=p;modalStarter=msg||'';modalData=detail;keys.clear();pendingMove=null;route=[];routeStop=null;touchGesture=null;actionPress=null;joystick.reset();if(fishing)stopFishing();
  renderPanel();
  if(!panel.open){panel.showModal();S?.play('open');}
 }
@@ -307,7 +333,7 @@ function goTo(place,forceNear=false,fromTouch=false){
  }
  if(!inside(p.x,p.y))return;
  if(panel.open)panel.close();
- clearTouchTarget();touchTarget=fromTouch;hovered=null;selected={x:p.x,y:p.y};
+ joystick.reset();clearTouchTarget();touchTarget=fromTouch;hovered=null;selected={x:p.x,y:p.y};
  const works=region()==='town'&&pos(p)===pos(E.WORKSHOP)||region()==='house'&&pos(p)==='8,7'||region()==='store'&&pos(p)==='16,7'||region()==='barn'&&pos(p)===pos(trough())||region()==='valley'&&pos(p)===pos(ranchSite());
  const near=!portal(p)&&(works||forceNear||plotAt(p)||waterAt(p.x,p.y)||!!(region()==='valley'?locations[pos(p)]:region()==='shoal'&&pos(p)===pos(waypoints.shoalDock))||E.npcs(state).some(n=>n.region===region()&&pos(n)===pos(p))||[...E.SPRING.gather,...E.GROVE_GATHER].some(n=>n.region===region()&&pos(n)===pos(p))||!passable(p.x,p.y));
  route=pathTo(p,near);
@@ -330,7 +356,7 @@ function chooseFile(){
 function swapSave(next){
  if(!next)return;
  if(!storage.write(disk,next,E.restore,{previousState:state})){renderPanel('浏览器未许可写入存档，当前进度未改动。');return;}
- state=next;pendingImport=null;route=[];selected=null;hovered=null;clearTouchTarget();resetWalk();tool='hoe';seed='turnip';lastList='';update();panel.close();tell('已切换存档，上一份保留为备份。',true);
+ state=next;pendingImport=null;route=[];selected=null;hovered=null;joystick.reset();clearTouchTarget();resetWalk();tool='hoe';seed='turnip';lastList='';update();panel.close();tell('已切换存档，上一份保留为备份。',true);
 }
 function addGroup(parent,cls){const el=document.createElement('div');el.className=cls;parent.append(el);return el;}
 function cardButton(label,detail,fn,accent=false){
@@ -537,7 +563,13 @@ function renderPanel(feedback=''){
   for(const [id,name] of [['guided','点地图'],['classic','经典键鼠']]){
    const b=qButton(name,()=>setControls(id));b.setAttribute('aria-pressed',String(id===controls));settings.append(b);
   }
-  paragraph(body,controls==='classic'?'方向键或 WASD 移动，左键 / C 用工具，右键 / X 互动，E 开背包，滚轮换工具。手机仍用点地图。':'点地图走近目标，空格用工具，E 互动。也可以在上方切换经典键鼠。');
+  paragraph(body,controls==='classic'?'方向键或 WASD 移动，左键 / C 用工具，右键 / X 互动，E 开背包，滚轮换工具。':'点地图走近目标，空格用工具，E 互动。也可以在上方切换经典键鼠。');
+  const mobileTitle=document.createElement('h3');mobileTitle.textContent='手机操作';body.append(mobileTitle);
+  const mobileSettings=addGroup(body,'modal-row settings');
+  for(const [id,label] of [['stick','摇杆 + 点按'],['tap','仅点按']]){
+   const b=qButton(label,()=>setMobileControls(id));b.setAttribute('aria-pressed',String(id===mobileControls));mobileSettings.append(b);
+  }
+  paragraph(body,stickMode()?'按住摇杆走路，松手停下。右侧按钮作用于地图上标出的格子；也可以点地图走路或选田。':'点地图走近目标，再按地图下方的按钮。单手操作时可以隐藏摇杆。');
   row.append(qButton('继续游戏',()=>panel.close(),true));
  }
  if(row.children.length)body.append(row);
@@ -560,7 +592,22 @@ $('bagOpen').onclick=()=>showPanel('bag',null);
 $('saves').onclick=()=>{pendingImport=null;showPanel('saves',null);};
 $('zoom').onclick=()=>{zoom=!zoom;$('zoom').textContent=zoom?'−':'＋';$('zoom').setAttribute('aria-pressed',String(zoom));$('zoom').setAttribute('aria-label',zoom?'缩小地图':'放大地图');update();};
 $('sound').onclick=()=>{sound=!sound;S?.set(sound);$('sound').setAttribute('aria-pressed',String(sound));$('sound').textContent=sound?'♪ 声音开':'♪ 声音关';};
-$('use').onclick=()=>tapAction(false);$('waterWide').onclick=()=>tapAction(true);$('interact').onclick=interact;
+function actionSignature(button){
+ return [button.id,region(),pos(target()),button.textContent,seed,tool].join('|');
+}
+for(const [id,wide] of [['use',false],['waterWide',true]]){
+ const button=$(id);
+ button.addEventListener('pointerdown',ev=>{if(stickMode())actionPress={button,signature:actionSignature(button),x:ev.clientX,y:ev.clientY};});
+ button.addEventListener('pointercancel',()=>{actionPress=null;});
+ button.onclick=ev=>{
+  const press=actionPress;actionPress=null;
+  if(stickMode()&&press?.button===button&&(press.signature!==actionSignature(button)||typeof ev?.clientX==='number'&&movedFinger(ev,press))){
+   touchFeedback='目标变了，停一下再按操作键。';update();return;
+  }
+  tapAction(wide);
+ };
+}
+$('interact').onclick=interact;
 function pointerTile(ev){
  const b=canvas.getBoundingClientRect(), vx=(ev.clientX-b.left)*720/b.width,vy=(ev.clientY-b.top)*432/b.height;
  const p={x:Math.floor(vx/24+cam.x),y:Math.floor(vy/24+cam.y)};
@@ -575,8 +622,9 @@ function pointerTile(ev){
 canvas.addEventListener('pointerdown',ev=>{
  if(panel.open||ev.button!==0&&ev.button!==2)return;
  if(ev.pointerType==='touch'){
-  if(ev.isPrimary===false||ev.button!==0||fishing){touchGesture=null;return;}
-  touchGesture={id:ev.pointerId,x:ev.clientX,y:ev.clientY,region:region()};return;
+  if(stickDir||ev.isPrimary===false||ev.button!==0||fishing){touchGesture=null;return;}
+  const tile=pointerTile(ev);
+  touchGesture=tile?{id:ev.pointerId,x:ev.clientX,y:ev.clientY,region:region(),tile}:null;return;
  }
  const mouse=controls==='classic';
  if(fishing){if(mouse&&ev.button===0){ev.preventDefault();use(false);}return;}
@@ -593,8 +641,8 @@ canvas.addEventListener('pointerup',ev=>{
  if(ev.pointerType!=='touch'||!g||ev.pointerId!==g.id)return;
  touchGesture=null;
  if(panel.open||fishing||region()!==g.region||movedFinger(ev,g))return;
- const p=pointerTile(ev);
- if(p){canvas.focus({preventScroll:true});goTo(p,false,true);}
+ const p=g.tile;
+ if(p&&!stickDir){canvas.focus({preventScroll:true});goTo(p,false,true);}
 });
 canvas.addEventListener('pointercancel',ev=>{if(ev.pointerId===touchGesture?.id)touchGesture=null;});
 canvas.addEventListener('pointermove',ev=>{
@@ -619,7 +667,7 @@ document.addEventListener('keydown',ev=>{
  if(movekeys[k]){
   ev.preventDefault();
   if(!keys.has(k)&&!fishing){
-   keys.add(k);route=[];selected=null;clearTouchTarget();retryMoveAt=0;
+   joystick.reset();keys.add(k);route=[];selected=null;clearTouchTarget();retryMoveAt=0;
    const now=performance.now();
    if(walker.active(now))pendingMove=k;
    else {pendingMove=null;move(...movekeys[k],true,now);update();}
@@ -633,7 +681,10 @@ document.addEventListener('keydown',ev=>{
  if(/^[1-5]$/.test(k)){ev.preventDefault();if(k==='3'||k==='4')pickSeed(k==='3'?'turnip':'bean');else setTool({1:'hoe',2:'water',5:'fish'}[k]);}
 });
 document.addEventListener('keyup',ev=>keys.delete(ev.key.toLowerCase()));
-window.addEventListener('blur',()=>{keys.clear();pendingMove=null;touchGesture=null;});window.addEventListener('pagehide',save);
+function stopInput(){keys.clear();pendingMove=null;touchGesture=null;actionPress=null;joystick.reset();}
+window.addEventListener('blur',stopInput);
+document.addEventListener('visibilitychange',()=>{if(document.hidden)stopInput();});
+window.addEventListener('pagehide',()=>{stopInput();save();});
 function drawWaymarks(t){
  waymarkRects=[];ctx.save();ctx.font='bold 10px sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';
  for(const p of E.PORTALS.filter(p=>p.region===region()&&E.portalEnabled(state,p))){
@@ -656,6 +707,7 @@ function frame(t){
   for(const k of keys)held=k;
   const k=pendingMove||held;
   if(k){pendingMove=null;move(...movekeys[k],true,t);update();}
+  else if(stickDir){move(...dir[stickDir],true,t);update();}
   else if(route.length){
    const step=route.shift();if(!move(...step,false,t)){route=[];routeStop=null;if(touchTarget)touchFeedback='路被挡住了，再点一次目标。';}update();
   }
@@ -671,6 +723,19 @@ function frame(t){
  drawWaymarks(t);
  requestAnimationFrame(frame);
 }
+const joystick=Joystick.create($('mobileStick'),direction=>{
+ stickDir=direction;
+ if(!direction)return;
+ keys.clear();pendingMove=null;touchGesture=null;route=[];selected=null;hovered=null;clearTouchTarget();retryMoveAt=0;
+ const now=performance.now();
+ if(!walker.active(now))move(...dir[direction],true,now);
+ update();
+},{isEnabled:()=>stickMode()&&!panel.open&&!fishing});
+// Putting a thumb on the stick cancels auto-walk even before reaching its dead zone.
+$('mobileStick').addEventListener('pointerdown',ev=>{
+ if(!stickMode()||panel.open||fishing||ev.button!==0)return;
+ if(route.length){route=[];routeStop=null;touchGesture=null;update();}
+});
 resetWalk();createTools();update();
 if(startup.source==='legacy'){save();tell('旧存档已迁移到养殖版，原存档仍保留。',true);}
 else if(startup.source==='backup'){save();tell('主存档读不到，已恢复上一份备份。',true);}
