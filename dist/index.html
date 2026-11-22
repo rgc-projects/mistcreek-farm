@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="zh-CN">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><meta name="theme-color" content="#182b26"><meta name="description" content="在雾溪边种田、钓鱼，和村民一起修渡船，在雾溪的春夏秋冬种田，沿溪探访城镇和林地。"><title>雾溪农场 · Mistcreek Farm</title><link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23243930'/%3E%3Cpath d='M16 26V10m0 7c0-7 4-10 10-10-1 6-5 9-10 10m0 4c-1-7-5-9-11-9 1 5 4 9 11 9' fill='none' stroke='%23efc779' stroke-width='2.5' stroke-linejoin='round'/%3E%3C/svg%3E"><link rel="stylesheet" href="style.css?v=walk6"></head>
+<body>
+<main id="game">
+  <header class="top"><div class="brand"><div class="stamp" aria-hidden="true"><svg viewBox="0 0 40 40"><path d="M7 30h26M20 30V13m0 8C20 12 25 8 33 8c-1 7-6 12-13 13m0 5C19 17 14 15 7 14c0 7 6 12 13 12"/></svg></div><div><p class="eyebrow">MISTCREEK FARM <span class="edition">欢牧时光</span></p><h1>雾溪农场</h1></div></div><div class="top-actions"><button id="sound" class="quiet" aria-pressed="false">♪ 声音关</button><button id="map" class="quiet">地图</button><button id="calendar" class="quiet">农事历</button><button id="help" class="quiet">玩法</button></div></header>
+  <section class="status" aria-label="农场状态">
+    <div class="status-cell"><svg aria-hidden="true"><use href="#sun"/></svg><div><small id="weather">第 1 年 · 晴</small><strong id="day">春 1 日</strong></div></div>
+    <div class="status-cell"><svg aria-hidden="true"><use href="#clock"/></svg><div><small>溪谷时间</small><strong id="time">06:00</strong></div></div>
+    <div class="status-cell"><svg aria-hidden="true"><use href="#leaf"/></svg><div><small>体力</small><strong><span id="energy">100</span><span class="energybar"><i id="energyFill"></i></span></strong></div></div>
+    <div class="status-cell money"><svg aria-hidden="true"><use href="#coin"/></svg><div><small>零钱</small><strong id="gold">70 G</strong></div></div>
+  </section>
+  <div class="layout">
+    <section class="play" aria-label="游戏地图">
+      <div class="stage">
+        <canvas id="world" width="720" height="432" tabindex="0" aria-label="雾溪农场地图，使用方向键移动，空格使用工具，E 互动"></canvas>
+        <button id="zoom" class="map-zoom" type="button" aria-pressed="false" aria-label="放大地图">＋</button><div class="ribbon" aria-hidden="true"><span class="pin"></span><span id="zone">西岸 · 河畔农场</span></div>
+        <div id="arrival" class="arrival" aria-hidden="true" hidden></div><div class="fish-meter" id="fishMeter" hidden><strong id="fishTitle">收线时机</strong><div class="meter-track"><i id="fishBand"></i><b id="fishNeedle"></b></div><small>光标进入金色区域时按空格或点「收线」</small></div>
+      </div>
+      <div class="context"><div id="contextText">点击地图移动，或使用方向键。</div><div class="context-actions"><button id="use" class="quiet">使用工具</button><button id="waterWide" class="quiet" hidden>浇一排</button><button id="interact" class="accent">互动</button></div></div>
+      <nav id="tools" class="toolbar" aria-label="工具栏"></nav>
+    </section>
+    <aside class="sidebar">
+      <section class="card journal"><div class="card-label"><svg><use href="#journal"/></svg> 农场手记</div><h2 id="objective">从一畦土地开始</h2><p id="questBody">选一块田，用锄头翻土。</p><div class="steps" id="steps"></div></section>
+      <section class="card supplies"><div class="card-label"><svg><use href="#bag"/></svg> 帆布背包 <button id="bagOpen" class="text-button" type="button">展开</button></div><div class="stock" id="stock"></div></section>
+      <section class="card villagers"><div class="card-label"><svg><use href="#clock"/></svg> 村里此刻</div><div class="npc-list" id="npcList"></div><div class="farm-links"><button id="ranchLink" class="text-button" type="button">前往畜棚</button></div></section><div id="notice" class="notice" role="status" aria-live="polite"></div>
+    </aside>
+  </div>
+  <footer><span class="footer-tag">在溪边慢慢过日子</span><span class="legend" id="controlsLegend"><kbd>WASD</kbd> 移动 <kbd>空格</kbd> 使用 <kbd>E</kbd> 互动</span><div class="save-wrap"><span id="saveStatus">进度保存在此浏览器</span><button id="saves" class="text-button" type="button">存档</button></div></footer>
+</main>
+<dialog id="panel" aria-labelledby="panelTitle"><div class="modal-head"><p class="eyebrow" id="panelLabel">雾溪手记</p><button id="close" class="quiet" aria-label="关闭">关闭</button></div><h2 id="panelTitle"></h2><div id="panelBody"></div></dialog>
+<svg class="sprite" aria-hidden="true" xmlns="http://www.w3.org/2000/svg"><defs>
+<symbol id="sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v3m0 14v3M2 12h3m14 0h3M5 5l2 2m10 10 2 2M19 5l-2 2M7 17l-2 2"/></symbol>
+<symbol id="clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 7v5l4 2"/></symbol>
+<symbol id="leaf" viewBox="0 0 24 24"><path d="M6 20c3-5 6-8 11-11M7 16C2 10 9 4 21 3c0 10-5 17-14 13Z"/></symbol>
+<symbol id="coin" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="m12 7 4 5-4 5-4-5Z"/></symbol>
+<symbol id="journal" viewBox="0 0 24 24"><rect x="5" y="3" width="14" height="18" rx="2"/><path d="M8 3v18m3-13h5m-5 4h4"/></symbol>
+<symbol id="bag" viewBox="0 0 24 24"><path d="M8 7h8l4 8v4H4v-4Zm2 0L8 3h8l-2 4m-5 7h6"/></symbol>
+</defs></svg>
+<script defer src="engine.js?v=walk6"></script><script defer src="art.js?v=walk6"></script><script defer src="world-art.js?v=walk6"></script><script defer src="sound.js?v=walk6"></script><script defer src="save.js?v=walk6"></script><script defer src="walk.js?v=walk6"></script><script defer src="game.js?v=walk6"></script>
+</body>
+</html>
