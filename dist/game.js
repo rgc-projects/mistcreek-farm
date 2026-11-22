@@ -6,15 +6,16 @@ const disk=(()=>{try{return window.localStorage;}catch{return null;}})();
 const startup=storage.load(disk,E.restore);
 let state=startup.state||E.create(), sound=false, tool='hoe', seed='turnip', selected=null, fishing=null, route=[], saveTimer=0, zoom=false;
 let lastList='', arrivalTimer=0, hovered=null, controls='guided';
+let touchTarget=false, touchGesture=null, touchFeedback='', routeStop=null;
 try{if(disk?.getItem('mistcreek-controls')==='classic')controls='classic';}catch{}
-function setControls(mode){controls=mode==='classic'?'classic':'guided';hovered=null;try{disk?.setItem('mistcreek-controls',controls);}catch{}update();if(panel.open)renderPanel();}
+function setControls(mode){controls=mode==='classic'?'classic':'guided';hovered=null;clearTouchTarget();try{disk?.setItem('mistcreek-controls',controls);}catch{}update();if(panel.open)renderPanel();}
 
 const cam={x:0,y:0};
 const walker=Walk.create(), reducedMotion=window.matchMedia?.('(prefers-reduced-motion: reduce)');
 let pendingMove=null, retryMoveAt=0, anchorX, anchorY;
 let waymarkRects=[];
 const keys=new Set(), toolNames={hoe:'锄头',water:'水壶',seed:'种子袋',fish:'鱼竿'};
-const stageFX={player:null,reducedMotion:false,event:null};
+const stageFX={player:null,reducedMotion:false,event:null,stopTile:null};
 const itemName=id=>E.ITEMS[id]?.name || ({wood:'浮木',fish:'溪鱼'})[id] || id;
 const crops=()=>Object.entries(E.CROPS);
 const seasons=['spring','summer','autumn','winter'];
@@ -38,7 +39,7 @@ const products=()=>Object.keys(state.shipped);
 const asTile=(val)=>typeof val==='string'?{x:+val.split(',')[0],y:+val.split(',')[1]}:val;
 const region=()=>state.region||'valley';
 const worldTiles={valley:{title:'河畔农场',desc:'耕种、出货、旧水灯和渡船'},town:{title:'雾溪镇',desc:'集市和松木加工坊'},grove:{title:'苔影林',desc:'野生植物、浮木与深潭'},house:{title:'农舍',desc:'在床边休息、结算出货款'},store:{title:'杂货铺',desc:'柜台按季节出售种子'},barn:{title:'河畔畜棚',desc:'喂养鸭子和绵羊、收蛋和剪羊毛'},shoal:{title:'芦苇浅滩',desc:'乘渡船去找浅滩独有的鱼'}};
-const portal=(p)=>E.PORTALS.find(v=>v.region===region()&&v.x===p?.x&&v.y===p?.y&&E.portalEnabled(state,v));
+const portal=(p)=>{const v=E.portalAt(state,p);return v&&E.portalEnabled(state,v)?v:null;};
 const ranchSite=()=>E.RANCH.site;
 const trough=()=>E.RANCH.trough;
 const size=()=>E.REGIONS[region()]||{width:30,height:18};
@@ -78,6 +79,18 @@ function inside(x,y){const {width,height}=size();return x>=0&&x<width&&y>=0&&y<h
 const waterAt=(x,y)=>E.isWater(x,y,region());
 const passable=(x,y)=>E.isWalkable(x,y,region(),state);
 function plotAt(p){return region()==='valley'&&p&&p.x>=5&&p.x<=13&&p.y>=10&&p.y<=14;}
+function clearTouchTarget(){touchTarget=false;touchFeedback='';routeStop=null;}
+function touchPlotAction(p){
+ if(!touchTarget||!selected||!plotAt(p))return null;
+ const plot=state.plots[pos(p)],crop=E.CROPS[plot?.crop];
+ if(!plot)return null;
+ if(crop){
+  if(plot.growth>=crop.days)return {name:'interact',label:'收获'};
+  return plot.watered||state.rain?{name:'interact',label:'查看作物'}:{name:'water',label:'浇水'};
+ }
+ if(!plot.tilled)return {name:'hoe',label:'翻土'};
+ return tool==='water'&&!plot.watered&&!state.rain?{name:'water',label:'浇水'}:{name:'plant',label:'播种'};
+}
 function facing(){const [dx,dy]=dir[state.player.dir]||dir.down;return {x:state.player.x+dx,y:state.player.y+dy};}
 function target(){return selected||(controls==='classic'&&hovered&&adjacent(state.player,hovered)?hovered:null)||facing();}
 function save(options){clearTimeout(saveTimer);const ok=storage.write(disk,state,E.restore,options);$('saveStatus').textContent=ok?'进度保存在此浏览器':'未能保存，请手动导出';return ok;}
@@ -93,8 +106,8 @@ function createTools(){
   $('tools').append(b);
  }
 }
-function setTool(id){if(!toolNames[id]||panel.open)return;tool=id;update();}
-function pickSeed(id){if(!E.CROPS[id])return;seed=id;tool='seed';if(panel.open)panel.close();update();}
+function setTool(id){if(!toolNames[id]||panel.open)return;tool=id;touchFeedback='';update();}
+function pickSeed(id){if(!E.CROPS[id])return;seed=id;tool='seed';touchFeedback='';if(panel.open)panel.close();update();}
 function journal(){
  const plots=Object.values(state.plots),j=state.journal||{}, sp=state.spring, day=dateOf();
  if(region()==='valley'&&day.daysLeft<=2&&state.day>7)return [8,'换季前收一收',(day.daysLeft?'还有 '+(day.daysLeft+1)+' 晚就换季。':'今晚换季。')+'不适应下一季的未成熟作物会退回种子。'];
@@ -150,11 +163,14 @@ function update(){
  const items=[[E.CROPS[seed].seed,state.inventory[E.CROPS[seed].seed]||0],...stock];
  markup('stock',items.map(([id,n])=>'<div class="stock-row"><span>'+icon(id)+itemName(id)+'</span><strong>'+n+'</strong></div>').join('')+'<p class="stock-note">备料浮木：'+(state.spring?.wood||0)+'</p>');
  for(const b of $('tools').children){const id=b.dataset.tool;b.setAttribute('aria-pressed',String(id===tool));$('qty-'+id).textContent=id==='seed'?E.CROPS[seed].seedName+' ×'+(state.inventory[E.CROPS[seed].seed]||0):'';}
- const p=target(), door=portal(p), hint=door&&adjacent(state.player,door)?door.label:E.getContext(state,p);
- $('contextText').textContent=fishing?'等光标进入金色区域，再收线。':route.length?'正在前往选中的位置…':hint||(controls==='classic'?'左键用工具，右键互动；WASD 移动。':'点地图选位置，也可用方向键移动。');
- $('use').textContent=fishing?'收线':tool==='seed'?'播种':tool==='water'?'浇水':'用'+toolNames[tool];$('interact').textContent=door&&adjacent(state.player,door)?'前往':'互动';
- $('interact').disabled=!!fishing;
- $('waterWide').hidden=tool!=='water'||!!fishing; $('waterWide').disabled=!!route.length;
+ const p=target(), door=portal(p), close=adjacent(state.player,p), field=touchPlotAction(p);
+ const hint=door&&close?door.label:E.getContext(state,p), moving=!!route.length;
+ $('contextText').textContent=fishing?'等光标进入金色区域，再收线。':moving?(field?'走到标出的田边…':'正在前往选中的位置…'):
+  (touchTarget&&touchFeedback||hint||(field&&!close?'走到相邻田格再操作。':controls==='classic'&&!touchTarget?'左键用工具，右键互动；WASD 移动。':'点地图选位置，也可用方向键移动。'));
+ const useButton=$('use');useButton.textContent=fishing?'收线':field?.label||(tool==='seed'?'播种':tool==='water'?'浇水':'用'+toolNames[tool]);useButton.disabled=!fishing&&(moving||!!field&&!close);
+ const inter=$('interact');inter.textContent=door&&close?'前往':'互动';inter.disabled=moving||!!fishing;inter.hidden=!!field&&!fishing;
+ const showBatch=field?field.name==='water':tool==='water';
+ $('waterWide').hidden=!showBatch||!!fishing; $('waterWide').disabled=moving||!!field&&!close;
  $('waterWide').textContent=state.ranch.toolLevel===2?'浇五格':'浇一排';
  const stage=canvas.parentElement;stage.style.setProperty('--zoom',zoom?'1.75':'1');
 
@@ -162,7 +178,7 @@ function update(){
  S?.setScene({rain:state.rain,weather,season:cal.season,minute:state.minute,region:region()});
 }
 function arrival(){
- route=[];selected=null;hovered=null;resetWalk();
+ route=[];selected=null;hovered=null;clearTouchTarget();resetWalk();
  const a=$('arrival'), stage=canvas.parentElement;
  a.hidden=true;a.textContent=worldTiles[region()].title;void a.offsetHeight;a.hidden=false;
  stage.classList.remove('sailing');void stage.offsetHeight;stage.classList.add('sailing');
@@ -170,7 +186,7 @@ function arrival(){
 }
 function move(dx,dy,manual=true,now=performance.now()){
  if(panel.open||fishing)return false;
- if(manual){route=[];selected=null;}
+ if(manual){route=[];selected=null;clearTouchTarget();}
  const before=region(), from={x:state.player.x,y:state.player.y};
  const moved=E.move(state,dx,dy);
  if(region()!==before){arrival();S?.play('travel');save();}
@@ -197,6 +213,7 @@ function pathTo(targetTile,interact){
 function after(r,action,p){
  if(!r)return;
  tell(r.msg,r.ok);
+ if(touchTarget)touchFeedback=r.msg;
  let cue=({hoe:'hoe',water:'water',waterRow:'water',plant:'plant',ship:'ship',order:'order',buySeed:'buy',sleep:'newDay',gather:'gather',sail:'sail',repairFerry:'ferryRepaired',travel:'travel',workshopStart:'process',workshopCollect:'take',gift:'errand',barnBuild:'buildBarn',barnUpgrade:'upgrade',toolUpgrade:'upgrade',animalBuy:'buy',hayBuy:'buy',animalFeed:'feed',animalPet:'pet',animalCollect:'animalCollect'})[action];
  if(['harvest','catch','miss','newDay','repairDone','errand'].includes(r.event))cue=r.event;
  if(r.errand)cue='errand';
@@ -238,6 +255,14 @@ function use(wide=false){
  else if(tool==='water'&&wide)action('waterRow',p);
  else action(tool,p);
 }
+function tapAction(wide=false){
+ const p=target(), field=touchPlotAction(p);
+ if(fishing||!field)return use(wide);
+ if(panel.open||route.length||!adjacent(state.player,p))return;
+ if(wide&&field.name!=='water')return;
+ if(field.name==='interact')return interact();
+ action(wide?'waterRow':field.name,p,field.name==='plant'?seed:undefined);
+}
 function reelPower(elapsed){const phase=(elapsed%2000)/1000;return phase<=1?phase:2-phase;}
 function stopFishing(){fishing=null;$('fishMeter').hidden=true;update();}
 function interact(){
@@ -252,7 +277,7 @@ function qButton(label,fn,accent=false){
 }
 function paragraph(parent,txt){const p=document.createElement('p');p.textContent=txt;parent.append(p);}
 function showPanel(mode,p,msg,detail=null){
- modalMode=mode;modalTile=p;modalStarter=msg||'';modalData=detail;keys.clear();pendingMove=null;route=[];if(fishing)stopFishing();
+ modalMode=mode;modalTile=p;modalStarter=msg||'';modalData=detail;keys.clear();pendingMove=null;route=[];routeStop=null;touchGesture=null;if(fishing)stopFishing();
  renderPanel();
  if(!panel.open){panel.showModal();S?.play('open');}
 }
@@ -272,20 +297,23 @@ function hop(destination){
  }
  return null;
 }
-function goTo(place,forceNear=false){
+function goTo(place,forceNear=false,fromTouch=false){
  const p=asTile(place);
  if(!p)return;
  if(place.region&&place.region!==region()){
   const step=hop(place.region);
   if(!step){tell(place.region==='barn'?'先建好农场畜棚，再进去看看。':'这条路暂时未开放。');return;}
-  goTo(step,!!step.boat);if(step.boat)tell('先走到码头，再和渡船互动。');return;
+  goTo(step,!!step.boat,fromTouch);if(step.boat)tell('先走到码头，再和渡船互动。');return;
  }
  if(!inside(p.x,p.y))return;
  if(panel.open)panel.close();
- selected={x:p.x,y:p.y};
+ clearTouchTarget();touchTarget=fromTouch;hovered=null;selected={x:p.x,y:p.y};
  const works=region()==='town'&&pos(p)===pos(E.WORKSHOP)||region()==='house'&&pos(p)==='8,7'||region()==='store'&&pos(p)==='16,7'||region()==='barn'&&pos(p)===pos(trough())||region()==='valley'&&pos(p)===pos(ranchSite());
  const near=!portal(p)&&(works||forceNear||plotAt(p)||waterAt(p.x,p.y)||!!(region()==='valley'?locations[pos(p)]:region()==='shoal'&&pos(p)===pos(waypoints.shoalDock))||E.npcs(state).some(n=>n.region===region()&&pos(n)===pos(p))||[...E.SPRING.gather,...E.GROVE_GATHER].some(n=>n.region===region()&&pos(n)===pos(p))||!passable(p.x,p.y));
- route=pathTo(p,near);pendingMove=null;retryMoveAt=0;update();
+ route=pathTo(p,near);
+ if(fromTouch&&route.length&&plotAt(p))routeStop=route.reduce(({x,y},[dx,dy])=>({x:x+dx,y:y+dy}),{x:state.player.x,y:state.player.y});
+ if(fromTouch&&!route.length&&!(near?adjacent(state.player,p):pos(state.player)===pos(p)))touchFeedback='这里暂时走不到，试试旁边的道路。';
+ pendingMove=null;retryMoveAt=0;update();
 }
 function saveFile(raw){
  const damaged=typeof raw==='string';
@@ -302,7 +330,7 @@ function chooseFile(){
 function swapSave(next){
  if(!next)return;
  if(!storage.write(disk,next,E.restore,{previousState:state})){renderPanel('浏览器未许可写入存档，当前进度未改动。');return;}
- state=next;pendingImport=null;route=[];selected=null;hovered=null;resetWalk();tool='hoe';seed='turnip';lastList='';update();panel.close();tell('已切换存档，上一份保留为备份。',true);
+ state=next;pendingImport=null;route=[];selected=null;hovered=null;clearTouchTarget();resetWalk();tool='hoe';seed='turnip';lastList='';update();panel.close();tell('已切换存档，上一份保留为备份。',true);
 }
 function addGroup(parent,cls){const el=document.createElement('div');el.className=cls;parent.append(el);return el;}
 function cardButton(label,detail,fn,accent=false){
@@ -532,27 +560,50 @@ $('bagOpen').onclick=()=>showPanel('bag',null);
 $('saves').onclick=()=>{pendingImport=null;showPanel('saves',null);};
 $('zoom').onclick=()=>{zoom=!zoom;$('zoom').textContent=zoom?'−':'＋';$('zoom').setAttribute('aria-pressed',String(zoom));$('zoom').setAttribute('aria-label',zoom?'缩小地图':'放大地图');update();};
 $('sound').onclick=()=>{sound=!sound;S?.set(sound);$('sound').setAttribute('aria-pressed',String(sound));$('sound').textContent=sound?'♪ 声音开':'♪ 声音关';};
-$('use').onclick=()=>use(false);$('waterWide').onclick=()=>use(true);$('interact').onclick=interact;
+$('use').onclick=()=>tapAction(false);$('waterWide').onclick=()=>tapAction(true);$('interact').onclick=interact;
 function pointerTile(ev){
  const b=canvas.getBoundingClientRect(), vx=(ev.clientX-b.left)*720/b.width,vy=(ev.clientY-b.top)*432/b.height;
  const p={x:Math.floor(vx/24+cam.x),y:Math.floor(vy/24+cam.y)};
- const sign=waymarkRects.find(a=>vx>=a.x&&vx<=a.x+a.w&&vy>=a.y&&vy<=a.y+14&&a.destination.region===region());
+ // Prefer the actual opening; the inset label also works as a touch shortcut.
+ if(portal(p)?.cells)return p;
+ const pad=Math.min(12,ev.pointerType==='touch'?720*4/b.width:0);
+ const contains=(r,gap)=>vx>=r.x-gap&&vx<=r.x+r.w+gap&&vy>=r.y-gap&&vy<=r.y+14+gap;
+ const active=waymarkRects.filter(r=>r.destination.region===region());
+ const sign=active.find(r=>contains(r,0))||active.find(r=>r.destination.cells&&contains(r,pad));
  return sign?.destination||(inside(p.x,p.y)?p:null);
 }
 canvas.addEventListener('pointerdown',ev=>{
  if(panel.open||ev.button!==0&&ev.button!==2)return;
- const mouse=controls==='classic'&&ev.pointerType!=='touch';
+ if(ev.pointerType==='touch'){
+  if(ev.isPrimary===false||ev.button!==0||fishing){touchGesture=null;return;}
+  touchGesture={id:ev.pointerId,x:ev.clientX,y:ev.clientY,region:region()};return;
+ }
+ const mouse=controls==='classic';
  if(fishing){if(mouse&&ev.button===0){ev.preventDefault();use(false);}return;}
  const p=pointerTile(ev);if(!p)return;
  canvas.focus({preventScroll:true});
  if(!mouse){if(ev.button===0)goTo(p);return;}
- ev.preventDefault();route=[];selected=p;hovered=p;update();
+ ev.preventDefault();route=[];clearTouchTarget();selected=p;hovered=p;update();
  if(ev.button===2){interact();return;}
  if(ev.button===0)use(ev.shiftKey);
 });
+function movedFinger(ev,g){return Math.hypot(ev.clientX-g.x,ev.clientY-g.y)>10;}
+canvas.addEventListener('pointerup',ev=>{
+ const g=touchGesture;
+ if(ev.pointerType!=='touch'||!g||ev.pointerId!==g.id)return;
+ touchGesture=null;
+ if(panel.open||fishing||region()!==g.region||movedFinger(ev,g))return;
+ const p=pointerTile(ev);
+ if(p){canvas.focus({preventScroll:true});goTo(p,false,true);}
+});
+canvas.addEventListener('pointercancel',ev=>{if(ev.pointerId===touchGesture?.id)touchGesture=null;});
 canvas.addEventListener('pointermove',ev=>{
- if(controls!=='classic'||ev.pointerType==='touch'||fishing||route.length||panel.open)return;
- const p=pointerTile(ev);if(p&&(!hovered||pos(hovered)!==pos(p))){hovered=p;selected=null;update();}
+ if(ev.pointerType==='touch'){
+  const g=touchGesture;if(g&&ev.pointerId===g.id&&movedFinger(ev,g))touchGesture=null;
+  return;
+ }
+ if(controls!=='classic'||fishing||route.length||panel.open)return;
+ const p=pointerTile(ev);if(p&&(!hovered||pos(hovered)!==pos(p))){hovered=p;selected=null;clearTouchTarget();update();}
 });
 canvas.addEventListener('pointerleave',()=>{hovered=null;});
 canvas.addEventListener('contextmenu',ev=>{if(controls==='classic')ev.preventDefault();});
@@ -568,7 +619,7 @@ document.addEventListener('keydown',ev=>{
  if(movekeys[k]){
   ev.preventDefault();
   if(!keys.has(k)&&!fishing){
-   keys.add(k);route=[];selected=null;retryMoveAt=0;
+   keys.add(k);route=[];selected=null;clearTouchTarget();retryMoveAt=0;
    const now=performance.now();
    if(walker.active(now))pendingMove=k;
    else {pendingMove=null;move(...movekeys[k],true,now);update();}
@@ -582,7 +633,7 @@ document.addEventListener('keydown',ev=>{
  if(/^[1-5]$/.test(k)){ev.preventDefault();if(k==='3'||k==='4')pickSeed(k==='3'?'turnip':'bean');else setTool({1:'hoe',2:'water',5:'fish'}[k]);}
 });
 document.addEventListener('keyup',ev=>keys.delete(ev.key.toLowerCase()));
-window.addEventListener('blur',()=>{keys.clear();pendingMove=null;});window.addEventListener('pagehide',save);
+window.addEventListener('blur',()=>{keys.clear();pendingMove=null;touchGesture=null;});window.addEventListener('pagehide',save);
 function drawWaymarks(t){
  waymarkRects=[];ctx.save();ctx.font='bold 10px sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';
  for(const p of E.PORTALS.filter(p=>p.region===region()&&E.portalEnabled(state,p))){
@@ -590,12 +641,12 @@ function drawWaymarks(t){
   if(x<-20||x>740||y<-20||y>450)continue;
   const label=p.label;
   const x1=Math.max(50,Math.min(670,x)), yy=Math.max(28,y-5);
-  const w=Math.min(112,ctx.measureText(label).width+13), lit=selected&&pos(selected)===pos(p);
+  const w=Math.min(112,ctx.measureText(label).width+13), lit=portal(selected)===p;
   waymarkRects.push({x:x1-w/2,y:yy-15,w,destination:p});
   ctx.fillStyle=lit?'#735d32':'#19322be9';ctx.fillRect(Math.round(x1-w/2),Math.round(yy-15),Math.ceil(w),14);
   ctx.strokeStyle='#eacb86';ctx.strokeRect(Math.round(x1-w/2)+.5,Math.round(yy-15)+.5,Math.ceil(w)-1,13);
   ctx.fillStyle='#ffedb8';ctx.fillText(label,x1,yy-7.5,w-6);
-  ctx.fillStyle='#f4d087';ctx.fillRect(Math.round(x-2),Math.round(y+9+Math.sin(t/220)*2),4,5);
+  if(!p.cells){ctx.fillStyle='#f4d087';ctx.fillRect(Math.round(x-2),Math.round(y+9+Math.sin(t/220)*2),4,5);}
  }
  ctx.restore();
 }
@@ -606,12 +657,14 @@ function frame(t){
   const k=pendingMove||held;
   if(k){pendingMove=null;move(...movekeys[k],true,t);update();}
   else if(route.length){
-   const step=route.shift();if(!move(...step,false,t))route=[];update();
+   const step=route.shift();if(!move(...step,false,t)){route=[];routeStop=null;if(touchTarget)touchFeedback='路被挡住了，再点一次目标。';}update();
   }
  }
  if(fishing)$('fishNeedle').style.left=(reelPower(t-fishing.start)*100)+'%';
  stageFX.reducedMotion=!!reducedMotion?.matches;
  stageFX.player=walker.sample(state.player,t,stageFX.reducedMotion);
+ if(!route.length&&!walker.active(t))routeStop=null;
+ stageFX.stopTile=routeStop;
  view(stageFX.player);
  if(region()==='valley'||region()==='shoal')A.draw(ctx,state,t,target(),stageFX);
  else W.draw(ctx,state,t,target(),stageFX,cam);

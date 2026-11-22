@@ -323,6 +323,34 @@ function drawRanch(c,state,t,engine,season){
  if(built)pinMark(c,x,y-39,'#eed399',t,'chevron');
  else pinMark(c,x,y-25,'#f0d59b',t,'bang');
 }
+// Ground-level road symbols stay in the outer eight pixels, clear of feet.
+function roadGate(c,x,first,last,direction,season){
+ const edge=x*T+(direction>0?T-1:0),inward=-direction;
+ const colors=season==='winter'?['#8d9ea0','#52686a','#f4e4ac']:['#a39372','#6c6750','#f5daa0'];
+ for(let row=first;row<=last;row++){
+  const cy=row*T+12, inside=edge+inward*4;
+  R(c,inside-2,cy-6,6,13,colors[0]);
+  for(let k=-4;k<=4;k++){
+   const tip=edge+inward*(1+Math.abs(k));
+   R(c,Math.min(tip,tip+inward*2),cy+k,3,1,colors[1]);
+   if(Math.abs(k)<4)R(c,tip,cy+k,1,1,colors[2]);
+  }
+ }
+ for(const b of [first*T-1,(last+1)*T]){
+  const pole=edge+inward*3;
+  R(c,pole-3,b-1,7,3,colors[0]);
+  R(c,pole-2,b-7,5,9,'#746750');R(c,pole-2,b-7,2,8,'#a98e67');
+  R(c,pole-3,b-8,7,2,'#b79c6f');R(c,pole-2,b-8,5,1,'#f0d59b');
+ }
+}
+function routeStop(c,point){
+ if(!Number.isInteger(point?.x)||!Number.isInteger(point?.y))return;
+ const x=point.x*T,y=point.y*T;
+ // Dashes, deliberately inset from and distinct from the gold target border.
+ for(const [dx,dy,w,h] of [[4,4,3,2],[10,4,3,2],[16,4,3,2],[4,17,3,2],[10,17,3,2],[16,17,3,2],[4,10,2,3],[17,10,2,3]]){
+  R(c,x+dx,y+dy+1,w,h,'#425f58');R(c,x+dx,y+dy,w,h,'#c9e4c6');
+ }
+}
 function cacheMap(season){
  const el=document.createElement('canvas');el.width=W;el.height=H;
  const c=el.getContext('2d');c.imageSmoothingEnabled=false;
@@ -340,7 +368,7 @@ function cacheMap(season){
   }else if(a()<.33)stone(c,xx,yy,.55);else if(a()<(season==='summer'?.7:.5))flower(c,xx,yy,blossoms[Math.floor(a()*blossoms.length)]);else tuft(c,xx,yy,SEASON[season].field?.[2]||darkGrass,SEASON[season].field?.[3]||'#9eb680');
  }}
  for(const [x,y] of [[65,87],[43,141],[375,113],[364,161],[500,113],[687,79],[99,400],[322,412],[380,386],[539,290],[683,383]])stone(c,x,y,.72);
- initialPlots(c,season);
+ initialPlots(c,season);roadGate(c,29,8,9,1,season);
  return el;
 }
 const backgrounds=new Map();
@@ -804,6 +832,7 @@ function draw(ctx,state,t=0,target=null,fx={}){
  const player=(!reduce&&fx?.player)||state.player||{x:7,y:8,dir:'down'};
  z.push({x:player.x,y:player.y,p:c1,dir:player.dir||'down',phase:reduce?null:player.phase});
  z.sort((a,b)=>a.y-b.y);
+ routeStop(ctx,fx?.stopTile);
  if(target)tileTarget(ctx,target,at,season);
  for(const a of z)sprite(ctx,a.x*T+12,a.y*T+11,a.p,at,a.dir,a.phase);
  if(at>0)effect(ctx,fx,t);
@@ -812,5 +841,5 @@ function draw(ctx,state,t=0,target=null,fx={}){
 }
 const motion=typeof window.matchMedia==='function'?window.matchMedia('(prefers-reduced-motion: reduce)'):null;
 window.MistSeasonArt={seasonOf,flurries,drift};
-window.MistArt={draw,walkPose};
+window.MistArt={draw,walkPose,roadGate,routeStop};
 })();

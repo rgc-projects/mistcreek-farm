@@ -259,6 +259,7 @@ function town(c,w,h,front,season){
  }
  R(c,gx-27,gy-34,54,6,'#725f54');R(c,gx-26,gy-34,52,2,'#ad8f6a');R(c,gx-14,gy-27,28,8,'#9a805e');
  R(c,gx-11,gy-26,22,1,'#dec293');for(let i=0;i<7;i++)R(c,gx-9+i*3,gy-23,2,1,'#e1cca0');
+ window.MistArt?.roadGate?.(c,0,10,12,-1,season);
 }
 function pond(c,season){
  const x=px(29),y=px(10),w=px(10),h=px(7),a=rng(1971);
@@ -817,6 +818,7 @@ function draw(c,state,t=0,target=null,fx={},cam={}){
  const portals=engine?.PORTALS?.filter(p=>p.region===region);
  const targets=portals?.length?portals:definition.portal;
  for(const p of targets)if(visible(px(p.x),px(p.y)))marker(c,p,at,p.x===0?'left':'door');
+ if(fx?.stopTile&&visible(px(fx.stopTile.x),px(fx.stopTile.y)))window.MistArt?.routeStop?.(c,fx.stopTile);
  const all=world.front.filter(f=>visible(f.x,f.y));
  if(region==='barn')ranchAnimals(all,state,at);
  for(const p of engine?.npcs?.(state)||[])if(p.region===region&&visible(px(p.x),px(p.y))){

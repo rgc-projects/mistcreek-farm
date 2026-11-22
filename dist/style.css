@@ -11,3 +11,13 @@ dialog{max-height:min(84dvh,720px);overflow:auto} dialog .subtle{color:#c3c9ab;f
 @media(prefers-reduced-motion:reduce){.arrival{animation:none;opacity:1}}
 #game{--season-accent:#eec483;--season-tint:#789067}#game[data-season=summer]{--season-accent:#f2cf75;--season-tint:#6b9660}#game[data-season=autumn]{--season-accent:#f0b782;--season-tint:#a98055}#game[data-season=winter]{--season-accent:#d6e9e7;--season-tint:#769daa}.edition{color:var(--season-accent);border-color:var(--season-tint)}.status-cell:first-child svg{stroke:var(--season-accent)}.season-planner{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;margin:9px 0}.season-planner button{padding:5px 7px}.season-planner button[aria-pressed=true]{background:#eec483;color:#2e291d;border-color:#f5d193}.season-note{font-size:13px;color:#d4dbbd!important}.forecast{display:flex;flex-wrap:wrap;gap:6px;margin:9px 0}.forecast span{font-weight:700;color:#f0d2a2;font-size:13px;border:1px solid #607457;border-radius:5px;padding:5px 8px}.calendar-grid .last-day{outline:1px dashed #d6a776;outline-offset:-2px}.crop-supply{border-top:1px solid #52654c;padding-top:8px;margin-top:10px!important}.season-date{font-size:12px!important;color:#bfc9a9!important}
 .farm-links{display:flex;flex-wrap:wrap;gap:6px;margin-top:5px;border-top:1px solid #49644f;padding-top:5px}.farm-links button{padding:0 4px;min-height:25px;text-decoration:none}.farm-links button[hidden]{display:none}.ranch-list{display:grid;gap:8px;margin-top:10px}.ranch-animal{border:1px solid #526a51;background:#2a4537;border-radius:7px;padding:10px}.ranch-animal strong{font-size:15px;color:#fee3aa}.ranch-animal p{font-size:12px;margin:3px 0 6px}.ranch-care{display:flex;flex-wrap:wrap;gap:5px}.ranch-care button{padding:4px 8px}.workbench-upgrade{padding-bottom:6px;margin-bottom:10px;border-bottom:1px solid #526a51}.settings .quiet[aria-pressed=true]{outline:2px solid #e9ba74;outline-offset:-2px}.ranch-stats{color:#edc98c;font-size:13px}
+
+/* Larger tap targets directly under the playfield; desktop layout stays compact. */
+@media (max-width: 640px) {
+  .context { display:grid; grid-template-columns:minmax(0,1fr); justify-content:stretch; padding:7px 8px 8px; gap:6px; }
+  .context #contextText { font-size:13px; min-height:1.35em; }
+  .context-actions { width:100%; gap:7px; }
+  .context-actions button { flex:1; min-width:0; min-height:44px; padding:4px 8px; font-size:14px; }
+  .context-actions button[hidden] { display:none; }
+  .map-zoom { width:44px; min-height:44px; }
+}

@@ -17,7 +17,7 @@ function walk(state,goal,adjacent=false) {
     }
     for(const [dx,dy] of steps){
       const nx=x+dx,ny=y+dy,key=nx+','+ny;
-      const autoPortal=E.PORTALS.some(p=>p.region===state.region&&p.x===nx&&p.y===ny&&E.portalEnabled(state,p));
+      const autoPortal=E.portalEnabled(state,E.portalAt(state,{x:nx,y:ny}));
       if(!seen.has(key)&&E.isWalkable(nx,ny,state.region,state)&&(!autoPortal||!adjacent&&same({x:nx,y:ny},goal))){
         seen.add(key);queue.push({x:nx,y:ny,path:[...path,[dx,dy]]});
       }
@@ -324,7 +324,7 @@ test('world expansion: linked doors are reachable and indoor actions preserve va
   for(const p of E.PORTALS){
     assert(E.isWalkable(p.x,p.y,p.region));
     assert(E.isWalkable(p.spawn.x,p.spawn.y,p.to));
-    assert(!E.PORTALS.some(q=>q.region===p.to&&same(q,p.spawn)),'arrival not on another auto-portal');
+    assert(!E.portalAt({region:p.to},p.spawn),'arrival not on another auto-portal');
   }
   assert.deepEqual([E.REGIONS.town.width,E.REGIONS.town.height],[42,24]);
   assert.deepEqual([E.REGIONS.grove.width,E.REGIONS.grove.height],[44,26]);
@@ -657,4 +657,37 @@ test('v4 migration preserves legacy assets; v5 save rejects inconsistent animal 
   ]) {
     const v=JSON.parse(JSON.stringify(good));mutate(v);assert.equal(E.restore(v),null);
   }
+});
+
+test('wide valley and town gates resolve all visible deck cells, with one portal ID and unchanged arrivals',()=>{
+  const valley=E.PORTALS.filter(p=>p.id==='valleyTown'),town=E.PORTALS.filter(p=>p.id==='townValley');
+  assert.equal(valley.length,1);assert.equal(town.length,1);
+  const [east]=valley,[west]=town;
+  assert.deepEqual(east.cells,[at(29,8),at(29,9)]);
+  assert.deepEqual(west.cells,[at(0,10),at(0,11),at(0,12)]);
+  for(const p of [east,west])for(const tile of p.cells){
+    const s=E.create('wide gate');
+    s.region=p.region;
+    if(p.region==='town')s.outworld.visited.town=true;
+    s.player={x:tile.x+(p===east?-1:1),y:tile.y,dir:p===east?'right':'left'};
+    assert.strictEqual(E.portalAt(s,tile),p);
+    assert(E.isWalkable(tile.x,tile.y,p.region,s));
+    assert.equal(E.getContext(s,tile),p.label);
+    assert.equal(E.act(s,'interact',tile).portal,p.id);
+    assert(E.move(s,p===east?1:-1,0));
+    assert.equal(s.region,p.to);assert.deepEqual(s.player,p.spawn);
+    assert.deepEqual(E.restore(JSON.parse(JSON.stringify(s))),s);
+  }
+  for(const [p,position] of [[east,at(28,10)],[west,at(1,13)],[west,at(1,9)]]){
+    const targeted=E.create();targeted.region=p.region;targeted.player={...position,dir:'up'};
+    assert.equal(E.getContext(targeted,p.id),p.label,'canonical or alternate selection works near either end of the span');
+    assert.equal(E.act(targeted,'travel',p.id).portal,p.id);
+    const defaulted=E.create();defaulted.region=p.region;defaulted.player={...position,dir:'up'};
+    assert.equal(E.act(defaulted,'travel').portal,p.id);
+  }
+  const s=E.create();s.player={x:28,y:11,dir:'right'};
+  assert.equal(E.portalAt(s,at(29,10)),undefined);
+  assert.equal(E.portalAt(s,{region:'town',x:29,y:9}),undefined);
+  assert(!E.act(s,'travel','valleyTown').ok,'beyond the entire span is too far');
+  assert(E.move(s,1,0));assert.equal(s.region,'valley','adjacent terrain is not an entry');
 });

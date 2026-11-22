@@ -21,13 +21,14 @@
     store:freeze({name:'溪口杂货铺',width:30,height:18}),
     barn:freeze({name:'河畔畜棚',width:30,height:18})
   });
-  const portal=(id,region,x,y,to,sx,sy,dir,label)=>
-    freeze({id,region,x,y,to,spawn:freeze({x:sx,y:sy,dir}),label});
+  const portal=(id,region,x,y,to,sx,sy,dir,label,deckRows)=>
+    freeze({id,region,x,y,to,spawn:freeze({x:sx,y:sy,dir}),label,
+      ...(deckRows?{cells:freeze(deckRows.map(y=>freeze({x,y})))}:{})});
   const PORTALS=freeze([
-    portal('valleyTown','valley',29,8,'town',2,11,'right','前往雾溪镇'),
+    portal('valleyTown','valley',29,8,'town',2,11,'right','前往雾溪镇',[8,9]),
     portal('valleyHouse','valley',7,7,'house',14,13,'up','进入农舍'),
     portal('valleyStore','valley',24,7,'store',14,13,'up','进入杂货铺'),
-    portal('townValley','town',0,11,'valley',28,8,'left','返回山谷'),
+    portal('townValley','town',0,11,'valley',28,8,'left','返回山谷',[10,11,12]),
     portal('townGrove','town',39,22,'grove',2,10,'right','前往苔影林'),
     portal('groveTown','grove',0,10,'town',39,21,'up','返回雾溪镇'),
     portal('houseValley','house',14,14,'valley',7,8,'down','离开农舍'),
@@ -178,7 +179,7 @@
   const within=(x,y,a,b,c,d)=>x>=a&&x<=c&&y>=b&&y<=d;
   function isWalkable(x,y,region='valley',state=null) {
     if(!inBounds(x,y,region)||isWater(x,y,region))return false;
-    if(PORTALS.some(p=>p.region===region&&p.x===x&&p.y===y))return true;
+    if(resolvePortal(region,{x,y}))return true;
     if(region==='shoal'||region==='grove')return true;
     if(region==='town'){
       return !TOWN_BLOCKS.some(rect=>within(x,y,...rect))&&
@@ -271,7 +272,17 @@
   const allGather=[...SPRING.gather,...GROVE_GATHER];
   const gatherAt=(state,t)=>allGather.find(a=>a.region===state.region&&same(a,t));
   const gatherLog=(state,source)=>source.region==='grove'?state.outworld.gathered:state.spring.gathered;
-  const portalAt=(state,t)=>PORTALS.find(p=>p.region===state.region&&same(p,t));
+  const portalCells=p=>p.cells||[p];
+  function resolvePortal(region,tile){
+    if(!tile||(tile.region&&tile.region!==region))return undefined;
+    return PORTALS.find(p=>p.region===region&&portalCells(p).some(entry=>same(entry,tile)));
+  }
+  const portalAt=(state,tile)=>resolvePortal(state.region,tile);
+  const nearPortal=(position,p)=>portalCells(p).some(entry=>near(position,entry));
+  function targetNear(state,t){
+    const p=portalAt(state,t);
+    return p?nearPortal(state.player,p):near(state.player,t);
+  }
   function portalEnabled(state,p){return !!p&&(p.id!=='valleyBarn'||!!state.ranch?.built);}
   function namedPlace(state,id){
     if(id==='dock'||id==='ferry')return regionDock(state);
@@ -336,8 +347,8 @@
   }
   function travel(state,target){
     const t=targetPoint(state,target);
-    const p=portalAt(state,t)||(target==null?PORTALS.find(q=>q.region===state.region&&near(state.player,q)):null);
-    if(!p||!near(state.player,p))return no('走到入口附近再前往。');
+    const p=portalAt(state,t)||(target==null?PORTALS.find(q=>q.region===state.region&&nearPortal(state.player,q)):null);
+    if(!p||!nearPortal(state.player,p))return no('走到入口附近再前往。');
     if(!portalEnabled(state,p))return no('这里还没有畜棚，先动工建好再进去。','barnSite');
     return enterPortal(state,p);
   }
@@ -584,7 +595,7 @@
   }
   function getContext(state,target){
     const t=targetPoint(state,target);
-    if(!t||!near(state.player,t))return '';
+    if(!t||!targetNear(state,t))return '';
     const obj=objectAt(state,t);
     if(obj==='house')return '休息到明天';
     if(obj==='shop')return '打开商店';
@@ -618,7 +629,7 @@
   }
   function interact(state,target){
     const t=targetPoint(state,target);
-    if(!t||!near(state.player,t))return no('走近一些再互动。');
+    if(!t||!targetNear(state,t))return no('走近一些再互动。');
     const obj=objectAt(state,t);
     if(obj==='house')return yes('休息后作物会生长，出货也会结算。','sleep');
     if(obj==='shop')return yes('杂货铺供应当季种子，萝卜与豆种全年有售。','shop');
@@ -953,5 +964,5 @@
     clean.ranch={built:r.built,level:r.level,hay:r.hay,animals,toolLevel:r.toolLevel,nextAnimal:r.nextAnimal};
     return clean;
   }
-  return freeze({create,move,act,getContext,restore,CROPS,ITEMS,FISH,ORDERS,WORLD,SPRING,REGIONS,PORTALS,GROVE_GATHER,WORKSHOP,RANCH,ANIMALS,OUTWORLD,TOWN_BLOCKS,GIFT_TASTES,GIFT_ITEMS,FISHING_BANDS,REPAIR_COST,MAX_ENERGY,isWater,isWalkable,rainFor,weatherFor,seasonForDay,inSeason,SEASONS,SEASON_LENGTH,npcs,calendar,ferryStatus,workshopStatus,ranchStatus,portalEnabled});
+  return freeze({create,move,act,getContext,restore,CROPS,ITEMS,FISH,ORDERS,WORLD,SPRING,REGIONS,PORTALS,GROVE_GATHER,WORKSHOP,RANCH,ANIMALS,OUTWORLD,TOWN_BLOCKS,GIFT_TASTES,GIFT_ITEMS,FISHING_BANDS,REPAIR_COST,MAX_ENERGY,isWater,isWalkable,rainFor,weatherFor,seasonForDay,inSeason,SEASONS,SEASON_LENGTH,npcs,calendar,ferryStatus,workshopStatus,ranchStatus,portalAt,portalEnabled});
 });

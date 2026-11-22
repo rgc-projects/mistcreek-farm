@@ -28,14 +28,16 @@ function eventTarget(){
  };
 }
 
-function rig({player,region='valley',controls='guided',reduced=false}={}){
+function rig({player,region='valley',controls='guided',reduced=false,mobile=false,setup}={}){
  let now=0,raf,live,last,shadows=[],nextTimer=0;
  const timers=new Map(), rows=new Map(), media={matches:reduced};
  const disk={getItem:key=>rows.get(key)??null,setItem:(key,value)=>rows.set(key,value)};
  if(controls==='classic')disk.setItem('mistcreek-controls',controls);
- if(player||region!=='valley'){
+ if(player||region!=='valley'||setup){
   const s=E.create(123);s.region=region;s.outworld.visited[region]=true;
   if(player)s.player={...s.player,...player};
+  setup?.(s);
+  assert(E.restore(s),'test fixture must be a valid game state');
   Save.write(disk,s,E.restore);
  }
  const classList={add(){},remove(){},toggle(){}};
@@ -52,8 +54,11 @@ function rig({player,region='valley',controls='guided',reduced=false}={}){
    replaceChildren(...items){this.children=items;},
    setAttribute(k,v){this.attrs[k]=v;},
    showModal(){this.open=true;},close(){this.open=false;this.dispatch('close');},
-   focus(){},
-   getBoundingClientRect(){return {left:0,top:0,right:720,bottom:432,width:720,height:432};}
+   focus(){},setPointerCapture(){},releasePointerCapture(){},hasPointerCapture(){return true;},
+   getBoundingClientRect(){
+    const width=mobile?360:720,height=mobile?216:432;
+    return {left:0,top:0,right:width,bottom:height,width,height};
+   }
   };
   if(tag==='canvas'){const canvasContext=ctx(false);e.getContext=()=>canvasContext;}
   return e;
@@ -64,7 +69,8 @@ function rig({player,region='valley',controls='guided',reduced=false}={}){
  const world=ids.world, main=ctx(true);
  world.getContext=()=>main;world.parentElement=element('div');
  const doc={...eventTarget(),body:element('body'),getElementById:id=>ids[id]??null,createElement:element};
- const win={...eventTarget(),MistEngine:E,MistSave:Save,localStorage:disk,matchMedia:()=>media,
+ const win={...eventTarget(),MistEngine:E,MistSave:Save,localStorage:disk,innerWidth:mobile?390:1280,
+  matchMedia:q=>q.includes('reduced-motion')?media:{matches:mobile},
   MistSound:{setScene(){},play(){},set(){}}};
  const globals=vm.createContext({document:doc,window:win,
   performance:{now:()=>now},requestAnimationFrame:fn=>{raf=fn;},
@@ -76,7 +82,8 @@ function rig({player,region='valley',controls='guided',reduced=false}={}){
  for(const name of ['MistArt','MistWorldArt']){
   const draw=win[name].draw;
   win[name].draw=(c,state,t,target,fx,cam)=>{
-   live=state;last={name,time:t,target:{...target},pose:{...fx.player},camera:cam?{...cam}:null};
+   live=state;last={name,time:t,target:target?{...target}:null,pose:{...fx.player},
+    stopTile:fx.stopTile?{...fx.stopTile}:null,camera:cam?{...cam}:null};
    return draw(c,state,t,target,fx,cam);
   };
  }
@@ -94,10 +101,16 @@ function rig({player,region='valley',controls='guided',reduced=false}={}){
  }
  frame(0);
  const key=(type,key,opts={})=>doc.dispatch(type,{target:world,key,...opts});
- function click(x,y,opts={}){
-  return world.dispatch('pointerdown',{button:0,pointerType:'mouse',clientX:(x+.5)*24,clientY:(y+.5)*24,...opts});
+ function pointer(type,x,y,opts={}){
+  const bounds=world.getBoundingClientRect(),{x:cx,y:cy}=last.camera||{x:0,y:0};
+  return world.dispatch(type,{button:0,pointerType:'mouse',pointerId:1,isPrimary:true,
+   clientX:(x-cx+.5)*bounds.width/30,clientY:(y-cy+.5)*bounds.height/18,...opts});
  }
- return {frame,clock,click,media,ids,win,world,
+ const click=(x,y,opts)=>pointer('pointerdown',x,y,opts);
+ const touch=(type,x,y,opts)=>pointer(type,x,y,{pointerType:'touch',...opts});
+ function tap(x,y){touch('pointerdown',x,y);touch('pointerup',x,y);}
+ function settle(steps=16){let result;for(let i=0;i<steps;i++)result=frame(now+Walk.route);return result;}
+ return {frame,clock,click,touch,tap,settle,media,ids,win,world,
   down:(k,opts)=>key('keydown',k,opts),up:k=>key('keyup',k),
   get state(){return live;},
   saved(){win.dispatch('pagehide');return Save.load(disk,E.restore).state;}
@@ -178,7 +191,7 @@ test('classic left click/tools and right click/interact remain separate from mov
  assert.deepEqual(xy(g.state.player),[9,9]);
  assert(g.click(10,8,{button:2}));assert.equal(g.ids.panelTitle.textContent,'农场出货箱');
  g.ids.panel.close();
- g.click(12,9,{pointerType:'touch'});
+ g.tap(12,9);
  assert.deepEqual(xy(g.frame(1).pose),[9,9]);assert.deepEqual(xy(g.state.player),[10,9]);
 });
 
@@ -194,4 +207,108 @@ test('blocked, blurred and reduced-motion steps cannot leave a walking pose in t
  const snapped=g.frame(20);assert.deepEqual(xy(snapped.pose),[10,9]);assert.equal(snapped.pose.phase,null);
  g.win.dispatch('blur');g.frame(Walk.keyboard*4);
  assert.deepEqual(xy(g.state.player),[10,9],'blur clears both held input and the buffered tap');
+});
+
+test('touch waits for release and neither a drag nor pointer cancellation starts a walking route',()=>{
+ const g=rig({mobile:true});
+ g.touch('pointerdown',13,9);
+ g.frame(20);
+ assert.deepEqual(xy(g.state.player),[9,9]);
+ g.touch('pointermove',11,9);
+ g.touch('pointerup',11,9);
+ g.settle(5);
+ assert.deepEqual(xy(g.state.player),[9,9]);
+ g.touch('pointerdown',13,9);
+ g.touch('pointercancel',13,9);
+ g.settle(5);
+ assert.deepEqual(xy(g.state.player),[9,9]);
+ g.tap(13,9);
+ g.settle(6);
+ assert.deepEqual(xy(g.state.player),[13,9]);
+});
+
+test('mobile touch walks through both widened road edges and snaps on each map change',()=>{
+ const g=rig({mobile:true,player:{x:28,y:9}});
+ g.tap(29,9);
+ const entered=g.frame(1);
+ assert.equal(entered.name,'MistWorldArt');
+ assert.equal(g.state.region,'town');
+ assert.deepEqual(xy(entered.pose),[2,11]);assert.equal(entered.pose.phase,null);
+ // The town view has a nonzero camera offset here. The tap uses screen coordinates,
+ // not hard-coded world pixels, and targets a secondary row of the west exit.
+ g.tap(0,12);
+ const returned=g.settle(8);
+ assert.equal(returned.name,'MistArt');assert.equal(g.state.region,'valley');
+ assert.deepEqual(xy(returned.pose),[28,8]);assert.equal(returned.pose.phase,null);
+ assert.equal(g.saved().outworld.visited.town,true);
+});
+
+test('classic right-click can interact with a secondary town exit from its outer approach',()=>{
+ const g=rig({controls:'classic',region:'town',player:{x:1,y:13}});
+ assert(g.click(0,12,{button:2}));
+ const returned=g.frame(1);
+ assert.equal(returned.name,'MistArt');
+ assert.equal(g.state.region,'valley');
+ assert.deepEqual(xy(returned.pose),[28,8]);
+ assert.equal(returned.pose.phase,null);
+});
+
+test('touch selects farm tile but walks to an adjacent working position; thumbs water only on explicit action',()=>{
+ const g=rig({mobile:true,setup(s){
+  for(let x=11;x<=13;x++)s.plots[x+',12'].tilled=true;
+ }});
+ const target=[12,12],row=[11,12,13].map(x=>g.state.plots[x+',12']);
+ g.ids.tools.children.find(button=>button.dataset.tool==='water').dispatch('click');
+ g.tap(...target);
+ const walking=g.frame(1);
+ assert.deepEqual(xy(walking.target),target);
+ assert(walking.stopTile,'show the approach destination during the route');
+ assert.notDeepEqual(xy(walking.stopTile),target);
+ assert(row.every(p=>!p.watered));
+ const arrived=g.settle();
+ const stop=xy(g.state.player);
+ assert.deepEqual(stop,xy(walking.stopTile));
+ assert(Math.max(...stop.map((p,i)=>Math.abs(p-target[i])))===1);
+ assert.deepEqual(xy(arrived.target),target);
+ assert.equal(arrived.stopTile,null);
+ assert(row.every(p=>!p.watered),'approach alone must not use a tool');
+ assert.equal(g.ids.waterWide.hidden,false);
+ assert.equal(g.ids.waterWide.disabled,false);
+ g.ids.waterWide.dispatch('click');
+ assert(row.every(p=>p.watered),'thumb watering action applies the actual engine row operation');
+ assert.equal(g.state.energy,94);
+});
+
+test('tapping a ripe crop only selects it; the explicit thumb harvest button collects it',()=>{
+ const g=rig({mobile:true,setup(s){
+  Object.assign(s.plots['12,12'],{tilled:true,crop:'turnip',growth:E.CROPS.turnip.days});
+ }});
+ const plot=g.state.plots['12,12'];
+ g.tap(12,12);
+ g.settle();
+ assert.equal(plot.crop,'turnip');assert.equal(g.state.inventory.turnip,0);
+ assert.equal(g.ids.use.textContent,'收获');
+ assert.equal(g.ids.use.disabled,false);
+ g.ids.use.dispatch('click');
+ assert.equal(plot.crop,null);
+ assert.equal(g.state.inventory.turnip,1);
+ assert.equal(g.saved().inventory.turnip,1);
+});
+
+test('one adjacent touch selection supports the explicit till, plant and water sequence',()=>{
+ const g=rig({mobile:true});
+ const plot=g.state.plots['9,10'];
+ g.tap(9,10);g.frame(1);
+ assert.equal(plot.tilled,false);
+ g.ids.use.dispatch('click');
+ assert.equal(plot.tilled,true);assert.equal(plot.crop,null);
+ g.tap(9,10);g.frame(2);
+ assert.equal(plot.crop,null);
+ g.ids.use.dispatch('click');
+ assert.equal(plot.crop,'turnip');assert.equal(plot.watered,false);
+ g.tap(9,10);g.frame(3);
+ assert.equal(plot.watered,false);
+ g.ids.use.dispatch('click');
+ assert.equal(plot.watered,true);
+ assert.deepEqual(xy(g.state.player),[9,9]);
 });
